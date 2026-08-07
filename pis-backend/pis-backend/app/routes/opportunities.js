@@ -16,10 +16,20 @@ router.post('/',
   protect,
   requireRole('admin', 'editor'),
   async (req, res) => {
-    const { client_name, brief_text, due_date } = req.body;
+    const { client_name, brief_text, due_date, logistics, programme_mode, previous_opportunity_id } = req.body;
 
     if (!client_name || !brief_text) {
       return res.status(400).json({ error: 'client_name and brief_text are required' });
+    }
+
+    // Repeat and Same-Cohort modes require a linked previous opportunity —
+    // enforced here so Discovery Questions can never run those modes
+    // against nothing (matches the spec's Section 10.4 blocking-screen rule).
+    if ((programme_mode === 'repeat' || programme_mode === 'new_content_same_cohort') && !previous_opportunity_id) {
+      return res.status(400).json({
+        error: 'Repeat and Same-Cohort programmes must be linked to a previous opportunity',
+        field: 'previous_opportunity_id'
+      });
     }
 
     try {
@@ -52,6 +62,9 @@ router.post('/',
         client_name,
         brief_text,
         due_date,
+        logistics: logistics || {},
+        programme_mode: programme_mode || 'new',
+        previous_opportunity_id: previous_opportunity_id || null,
         status: 'interpreting'
       });
 
@@ -212,6 +225,37 @@ router.patch('/:id/questions/:questionIndex',
   }
 );
 
+const { buildQuestionsContext } = require('../services/questionsContextService');
+
+// ── GET /api/opportunities/:id/questions/context ──
+const SuppressionAudit = require('../models/SuppressionAudit');
+
+router.get('/:id/questions/context',
+  protect,
+  async (req, res) => {
+    try {
+      const context = await buildQuestionsContext(req.params.id);
+
+      // Persist audit rows on every context call — cheap, and matches the
+      // spec's "written on every generate call" requirement (Section 12.3),
+      // interpreted here to also cover context loads since that's when
+      // suppression decisions are actually computed.
+      if (context.suppression?.audit?.length) {
+        await SuppressionAudit.insertMany(
+          context.suppression.audit.map(row => ({
+            ...row,
+            opportunity_id: req.params.id,
+            tenant_id: req.user.id
+          }))
+        );
+      }
+
+      res.json({ success: true, ...context });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message });
+    }
+  }
+);
 // ── POST /api/opportunities/:id/questions/:questionIndex/resolve ──
 // Powers the 3-option answer column.
 // body: { mode: 'from_brief' | 'flagged_to_client' | 'draft_assumption' }

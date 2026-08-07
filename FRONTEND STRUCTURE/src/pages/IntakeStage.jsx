@@ -250,7 +250,22 @@ export default function IntakeStage() {
         client_name: formData.client,
         brief_text:  formData.brief || formData.meetingNotes,
         due_date:    null,
+        logistics: {
+          format: { primary: formData.format || null, anchor_hint: null },
+          duration_phases: formData.phases.filter(p => p.days),
+          total_days: formData.totalDays ? Number(formData.totalDays) : null,
+          hours_per_day: formData.hoursPerDay ? Number(formData.hoursPerDay) : null,
+          budget: {
+            amount: formData.budget || null,
+            currency: null,
+            kind: formData.budgetFlag === 'found' ? 'stated' : (formData.budget ? 'stated' : 'missing')
+          },
+          location: { type: formData.location || null, provenance: 'client_stated' }
+        },
+        programme_mode: formData.programmeType,
+        previous_opportunity_id: formData.previousOpportunityId || null,
       });
+      
       localStorage.setItem("pis_opportunity_id", result.opportunity_id);
 
       const constraints = result.interpreted?.constraints?.value || [];
@@ -397,7 +412,7 @@ export default function IntakeStage() {
                 {attachments.map((att, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#f1f5f9", borderRadius: "10px", fontSize: "13px" }}>
                     <span>
-                      {att.type === "audio" ?  : att.type === "image" ? : att.type === "link" ? }{" "}
+                      {att.type === "audio" ? "🎵" : att.type === "image" ? "🖼️" : att.type === "link" ? "🔗" : "📄"}{" "}
                       <strong>{att.name}</strong>
                       <span style={{ color: "#94a3b8", marginLeft: "8px" }}>{att.size}</span>
                     </span>
