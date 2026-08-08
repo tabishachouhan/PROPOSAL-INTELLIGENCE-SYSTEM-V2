@@ -114,26 +114,6 @@ const buildQuestionsContext = async (opportunityId) => {
   suppression.questions = [...suppression.questions, ...adaptive.additions];
   suppression.audit = [...suppression.audit, ...adaptive.audit];
 
-  // Adaptive triggers run regardless of programme_mode — a track-boundary
-  // or long-modular-calendar situation is just as real for a Repeat
-  // programme as a New one, so these questions can append onto any of the
-  // three baseline sets already assembled above.
-  const { runAdaptiveTriggers } = require('./adaptiveTriggers');
-  const adaptive = runAdaptiveTriggers(opportunityBlock);
-
-  suppression.questions = [...suppression.questions, ...adaptive.additions];
-  suppression.audit = [...suppression.audit, ...adaptive.audit];
-
-  // Adaptive triggers run regardless of programme_mode — a track-boundary
-  // or long-modular-calendar situation is just as real for a Repeat
-  // programme as a New one, so these questions can append onto any of the
-  // three baseline sets already assembled above.
-  const { runAdaptiveTriggers } = require('./adaptiveTriggers');
-  const adaptive = runAdaptiveTriggers(opportunityBlock);
-
-  suppression.questions = [...suppression.questions, ...adaptive.additions];
-  suppression.audit = [...suppression.audit, ...adaptive.audit];
-
   return {
     opportunity: opportunityBlock,
     previous_cohort_context,

@@ -50,7 +50,12 @@ const OpportunitySchema = new mongoose.Schema({
       kind:     { type: String, enum: ['stated', 'inferred', 'missing'] }
     },
     location: {
-      type:       String, // 'client-site' | 'offsite' | 'institution-campus' | 'third-party-venue'
+      // NOTE: "type" is a reserved key in Mongoose schema definitions — a bare
+      // `type: String` here makes Mongoose treat the WHOLE `location` path as
+      // a String SchemaType (silently dropping `provenance`), instead of an
+      // object with two string subfields. Wrapping it as `{ type: String }`
+      // is the standard workaround whenever a field is itself named "type".
+      type:       { type: String }, // 'client-site' | 'offsite' | 'institution-campus' | 'third-party-venue'
       provenance: String
     }
   },

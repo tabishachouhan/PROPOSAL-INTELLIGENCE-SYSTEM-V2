@@ -47,6 +47,14 @@ export const generateQuestions = async (id) => {
   return res.data;
 };
 
+// Essentiality bands, suppression decisions + audit trail, and (for Repeat /
+// Same-Cohort modes) the previous_cohort_context block. Backed by
+// GET /opportunities/:id/questions/context — see questionsContextService.js.
+export const getQuestionsContext = async (id) => {
+  const res = await api.get(`/opportunities/${id}/questions/context`);
+  return res.data;
+};
+
 // ── ANSWER COLUMN (3-option resolver) ────────────
 // mode: 'from_brief' | 'flagged_to_client' | 'draft_assumption'
 export const resolveAnswer = async (opportunityId, questionIndex, mode) => {

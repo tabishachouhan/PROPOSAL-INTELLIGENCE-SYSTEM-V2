@@ -84,9 +84,9 @@ ${OUTPUT_RULES}`,
     user: (interpreted) => `Generate discovery questions for a first client call.
 
 OPPORTUNITY CONTEXT:
-Goals: ${interpreted.goals?.join(', ')}
-Audience: ${interpreted.audience}
-Themes: ${interpreted.themes?.join(', ')}
+Goals: ${interpreted.goals?.value?.join(', ')}
+Audience: ${interpreted.audience?.value}
+Themes: ${interpreted.themes?.value?.join(', ')}
 Ambiguities to resolve: ${interpreted.ambiguities?.join(', ')}
 
 Generate exactly 16 questions distributed across these 8 themes:
@@ -183,9 +183,9 @@ ${OUTPUT_RULES}`,
     user: (interpreted, competencies) => `Map this training brief to the most relevant competencies.
 
 BRIEF SUMMARY:
-Goals: ${interpreted.goals?.join(', ')}
-Themes: ${interpreted.themes?.join(', ')}
-Audience: ${interpreted.audience}
+Goals: ${interpreted.goals?.value?.join(', ')}
+Themes: ${interpreted.themes?.value?.join(', ')}
+Audience: ${interpreted.audience?.value}
 
 AVAILABLE COMPETENCIES:
 ${competencies.map(c => `- ${c.id}: ${c.name} — ${c.definition}`).join('\n')}
@@ -222,9 +222,9 @@ ${OUTPUT_RULES}`,
     user: (opportunity, designParameters) => `Build a day-by-day programme architecture.
 
 CLIENT: ${opportunity.client_name}
-GOALS: ${opportunity.interpreted?.goals?.join(', ')}
-AUDIENCE: ${opportunity.interpreted?.audience}
-CONSTRAINTS: ${opportunity.interpreted?.constraints?.join(', ')}
+GOALS: ${opportunity.interpreted?.goals?.value?.join(', ')}
+AUDIENCE: ${opportunity.interpreted?.audience?.value}
+CONSTRAINTS: ${opportunity.interpreted?.constraints?.value?.join(', ')}
 MODULES AVAILABLE:
 ${opportunity.modules?.map((m, i) =>
   `${i + 1}. ${m.title} (${m.duration_hrs}hrs, ${m.format}, Faculty: ${m.faculty})`
@@ -311,10 +311,10 @@ ${OUTPUT_RULES}`,
     user: (opportunity) => `Write a complete approach note for this custom programme proposal.
 
 CLIENT: ${opportunity.client_name}
-GOALS: ${opportunity.interpreted?.goals?.join(', ')}
-AUDIENCE: ${opportunity.interpreted?.audience}
-THEMES: ${opportunity.interpreted?.themes?.join(', ')}
-CONSTRAINTS: ${opportunity.interpreted?.constraints?.join(', ')}
+GOALS: ${opportunity.interpreted?.goals?.value?.join(', ')}
+AUDIENCE: ${opportunity.interpreted?.audience?.value}
+THEMES: ${opportunity.interpreted?.themes?.value?.join(', ')}
+CONSTRAINTS: ${opportunity.interpreted?.constraints?.value?.join(', ')}
 COMPETENCIES: ${opportunity.competencies?.map(c => c.competency_name).join(', ')}
 MODULES: ${opportunity.modules?.map(m => m.title).join(', ')}
 PROGRAMME: ${opportunity.architecture?.programme_name || 'Custom Programme'}
@@ -355,7 +355,7 @@ ${OUTPUT_RULES}`,
     user: (opportunity) => `Evaluate this executive education proposal.
 
 CLIENT: ${opportunity.client_name}
-GOALS: ${opportunity.interpreted?.goals?.join(', ')}
+GOALS: ${opportunity.interpreted?.goals?.value?.join(', ')}
 COMPETENCIES MAPPED: ${opportunity.competencies?.length || 0}
 MODULES SELECTED: ${opportunity.modules?.length || 0}
 APPROACH NOTE SECTIONS: ${Object.keys(opportunity.approach_note?.sections || {}).join(', ')}
