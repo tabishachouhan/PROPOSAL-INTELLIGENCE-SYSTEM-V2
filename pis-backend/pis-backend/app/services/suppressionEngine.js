@@ -31,6 +31,7 @@ function applySuppressionRule(question, context) {
       foundInSource,
     };
   }
+
   return {
     ...question,
     status: 'system_confirmed',
@@ -81,8 +82,13 @@ function getActiveQuestionSet({ mode, context }) {
   return [...resolved, ...adaptive];
 }
 
+function getQuestionsToDisplay(activeSet) {
+  return activeSet.filter((question) => question.status !== 'skipped_by_rule');
+}
+
 module.exports = {
   getActiveQuestionSet,
+  getQuestionsToDisplay,
   applySuppressionRule,
   applyAdaptiveTriggers,
   CONFIDENCE_THRESHOLD,
