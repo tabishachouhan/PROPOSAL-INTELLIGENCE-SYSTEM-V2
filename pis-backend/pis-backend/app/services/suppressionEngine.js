@@ -12,6 +12,7 @@ function resolveFoundInSource(field) {
   return { extractedTextRef: field.extractedTextRef, attachmentId: field.attachmentId };
 }
 
+
 function applySuppressionRule(question, context) {
   const field = resolveField(context, question.suppressionField);
   const foundInSource = resolveFoundInSource(field);
@@ -40,7 +41,6 @@ function applySuppressionRule(question, context) {
     foundInSource,
   };
 }
-
 const ADAPTIVE_TRIGGERS = [
   {
     id: 'track-boundary',
@@ -82,13 +82,8 @@ function getActiveQuestionSet({ mode, context }) {
   return [...resolved, ...adaptive];
 }
 
-function getQuestionsToDisplay(activeSet) {
-  return activeSet.filter((question) => question.status !== 'skipped_by_rule');
-}
-
 module.exports = {
   getActiveQuestionSet,
-  getQuestionsToDisplay,
   applySuppressionRule,
   applyAdaptiveTriggers,
   CONFIDENCE_THRESHOLD,
