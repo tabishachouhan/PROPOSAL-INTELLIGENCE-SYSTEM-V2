@@ -3,11 +3,49 @@ import { useNavigate } from "react-router-dom";
 import ProcessingState from "../components/ProcessingState";
 import { getOpportunity, buildArchitecture } from "../services/api";
 
+const MODALITY_CHANNELS = [
+  { key: "sync_in_person", label: "Sync in-person" },
+  { key: "sync_virtual", label: "Sync virtual" },
+  { key: "async_self_paced", label: "Async self-paced" },
+  { key: "async_social", label: "Async social" }
+];
+
+const LEARNING_CHANNELS = [
+  { key: "lecture", label: "Lecture" },
+  { key: "case", label: "Case" },
+  { key: "simulation", label: "Simulation" },
+  { key: "action_learning", label: "Action learning" },
+  { key: "coaching", label: "Coaching" },
+  { key: "peer_learning", label: "Peer" },
+  { key: "reflection", label: "Reflection" }
+];
+
+const rebalanceMix = (mix, changedKey, rawValue) => {
+  const keys = Object.keys(mix);
+  const clamped = Math.max(0, Math.min(100, Math.round(rawValue)));
+  const others = keys.filter((k) => k !== changedKey);
+  const othersCurrentTotal = others.reduce((s, k) => s + (Number(mix[k]) || 0), 0);
+  const remaining = 100 - clamped;
+  const next = { ...mix, [changedKey]: clamped };
+
+  if (othersCurrentTotal <= 0) {
+    const even = others.length ? remaining / others.length : 0;
+    others.forEach((k) => { next[k] = Math.round(even); });
+  } else {
+    others.forEach((k) => {
+      next[k] = Math.round(((Number(mix[k]) || 0) / othersCurrentTotal) * remaining);
+    });
+  }
+
+  const drift = 100 - keys.reduce((s, k) => s + next[k], 0);
+  if (drift !== 0 && others.length) {
+    next[others[others.length - 1]] += drift;
+  }
+  return next;
+};
+
 export default function ArchitectureStage() {
   const navigate = useNavigate();
-   // ── Template presets — each one is just a shortcut that sets several
-  // design parameters together and regenerates, same path as changing
-  // one field manually (Step 4's buildArchitecture merge logic handles it).
   const TEMPLATES = [
     { label: "1-Day Briefing",    params: { total_duration_days: 1, format: "residential", reinforcement: "light" } },
     { label: "3-Day Intensive",   params: { total_duration_days: 3, format: "residential", reinforcement: "medium" } },
@@ -20,6 +58,7 @@ export default function ArchitectureStage() {
   const [clientName, setClientName] = useState("");
   const [architecture, setArchitecture] = useState(null);
   const [designParameters, setDesignParameters] = useState(null);
+  const [suggestedDefaults, setSuggestedDefaults] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [errorRedirect, setErrorRedirect] = useState(null);
@@ -32,7 +71,6 @@ export default function ArchitectureStage() {
     }
     setOpportunityId(id);
     loadArchitecture(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadArchitecture = async (id, force = false, overrideParams = null) => {
@@ -41,23 +79,22 @@ export default function ArchitectureStage() {
     setErrorRedirect(null);
     try {
       const oppRes = await getOpportunity(id);
-      const opp = oppRes.data || oppRes; // backend wraps this route as { success, data }
+      const opp = oppRes.data || oppRes; 
       setClientName(opp.client_name);
 
-      // If we already have a saved architecture and this isn't a forced
-      // regenerate/parameter change, just show what's stored.
       if (opp.architecture?.phases?.length > 0 && !force && !overrideParams) {
         setArchitecture(opp.architecture);
         setDesignParameters(opp.architecture.design_parameters || null);
+        const result = await buildArchitecture(id, false, null);
+        setSuggestedDefaults(result.suggested_defaults || null);
         setLoading(false);
         return;
       }
 
-      // Otherwise (first visit, explicit regenerate, or a parameter change)
-      // call the backend to build/rebuild it.
       const result = await buildArchitecture(id, force || !!overrideParams, overrideParams);
       setArchitecture(result.architecture);
       setDesignParameters(result.architecture.design_parameters || null);
+      setSuggestedDefaults(result.suggested_defaults || null);
     } catch (err) {
       setError(err.response?.data?.error || "Could not load architecture");
       setErrorRedirect(err.response?.data?.redirect_to || null);
@@ -65,11 +102,19 @@ export default function ArchitectureStage() {
       setLoading(false);
     }
   };
-
- // Only updates local state — no backend call. The Apply button is what
-  // actually triggers a regenerate with everything changed at once.
   const handleParameterChange = (key, value) => {
     setDesignParameters({ ...designParameters, [key]: value });
+  };
+
+  const handleMixSliderChange = (mixKey, channelKey, value) => {
+    const currentMix = designParameters?.[mixKey] || {};
+    const nextMix = rebalanceMix(currentMix, channelKey, value);
+    setDesignParameters({ ...designParameters, [mixKey]: nextMix });
+  };
+
+  const resetMixToSuggested = (mixKey) => {
+    if (!suggestedDefaults?.[mixKey]) return;
+    setDesignParameters({ ...designParameters, [mixKey]: { ...suggestedDefaults[mixKey] } });
   };
 
   const handleApplyParameters = () => {
@@ -77,7 +122,6 @@ export default function ArchitectureStage() {
     loadArchitecture(opportunityId, true, designParameters);
   };
 
-  // ── Apply a template: same regenerate path, just multiple fields at once ──
   const applyTemplate = (templateParams) => {
     setDesignParameters({ ...designParameters, ...templateParams });
     loadArchitecture(opportunityId, true, templateParams);
@@ -109,6 +153,12 @@ export default function ArchitectureStage() {
     : 100;
 
   const warnings = architecture?.derived_metrics?.warnings || [];
+
+  const modalityTarget = designParameters?.modality_mix || {};
+  const modalityActual = architecture?.derived_metrics?.modality_actual_mix || {};
+  const channelTarget = designParameters?.channel_mix || {};
+  const channelActual = architecture?.derived_metrics?.channel_actual_mix || {};
+  const seventyTwentyTen = architecture?.derived_metrics?.seventy_twenty_ten || { formal: 0, social: 0, experiential: 0 };
 
   return (
     <div style={{ display: "flex", background: "#f1f5f9", minHeight: "100vh" }}>
@@ -196,6 +246,12 @@ export default function ArchitectureStage() {
                               {block.time_slot}
                               {block.modules?.length ? ` • ${block.modules.join(", ")}` : ""}
                             </p>
+                            {(block.modality || block.channel) && (
+                              <p style={{ marginTop: "4px" }}>
+                                {block.modality && <span className="tagChip">{block.modality.replace(/_/g, " ")}</span>}
+                                {block.channel && <span className="tagChip">{block.channel.replace(/_/g, " ")}</span>}
+                              </p>
+                            )}
                           </div>
                           <span className="phaseBadge">{block.duration_hrs}h</span>
                         </div>
@@ -207,11 +263,12 @@ export default function ArchitectureStage() {
 
               {/* RIGHT PANEL */}
               <div style={{ display: "grid", gap: "20px" }}>
-                
 
-                {/* DESIGN PARAMETERS */}
+
+                {/* DESIGN PARAMETERS — Layer 1: Programme Shape */}
                 <div className="rightCard">
                   <h2>Design Parameters</h2>
+                  <span className="provenanceChip">Layer 1 · Shape — seeded from Logistics duration &amp; format</span>
                   <label className="paramLabel">Duration (days)</label>
                   <input
                     type="number"
@@ -247,12 +304,113 @@ export default function ArchitectureStage() {
                     <option value="medium">Medium</option>
                     <option value="heavy">Heavy</option>
                   </select>
+                  <label className="paramLabel">Measurement Depth (Kirkpatrick 1-4)</label>
+                  <select
+                    className="paramInput"
+                    value={designParameters?.measurement_depth ?? 2}
+                    onChange={(e) => handleParameterChange("measurement_depth", Number(e.target.value))}
+                  >
+                    <option value={1}>1 — Reaction only</option>
+                    <option value={2}>2 — Learning / knowledge check</option>
+                    <option value={3}>3 — Behaviour change on the job</option>
+                    <option value={4}>4 — Tied to a business KPI</option>
+                  </select>
 
                   <button className="applyBtn" onClick={handleApplyParameters}>
                     Apply Changes & Regenerate
                   </button>
                 </div>
-                
+
+                {/* LAYER 2: MODALITY DISTRIBUTION */}
+                <div className="rightCard">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <h2>Modality Distribution</h2>
+                    <button className="resetLink" onClick={() => resetMixToSuggested("modality_mix")}>Reset to suggested</button>
+                  </div>
+                  <span className="provenanceChip">Layer 2 · seeded from Logistics format ({designParameters?.format || "residential"})</span>
+                  {MODALITY_CHANNELS.map(({ key, label }) => {
+                    const target = modalityTarget[key] ?? 0;
+                    const actual = modalityActual[key];
+                    const drift = actual !== undefined ? Math.abs(actual - target) : null;
+                    return (
+                      <div key={key} style={{ marginTop: "14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: 700, color: "#334155" }}>
+                          <span>{label}</span>
+                          <span>
+                            {target}%
+                            {actual !== undefined && (
+                              <span style={{ color: drift > 10 ? "#f59e0b" : "#94a3b8", marginLeft: "6px" }}>
+                                (actual {actual}%)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          className="mixSlider"
+                          value={target}
+                          onChange={(e) => handleMixSliderChange("modality_mix", key, Number(e.target.value))}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* LAYER 3: LEARNING CHANNEL MIX */}
+                <div className="rightCard">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <h2>Learning Channel Mix</h2>
+                    <button className="resetLink" onClick={() => resetMixToSuggested("channel_mix")}>Reset to suggested</button>
+                  </div>
+                  <span className="provenanceChip">Layer 3 · seeded from audience level ({designParameters?.audience_level || "Mid"})</span>
+                  {LEARNING_CHANNELS.map(({ key, label }) => {
+                    const target = channelTarget[key] ?? 0;
+                    const actual = channelActual[key];
+                    return (
+                      <div key={key} style={{ marginTop: "14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: 700, color: "#334155" }}>
+                          <span>{label}</span>
+                          <span>
+                            {target}%
+                            {actual !== undefined && <span style={{ color: "#94a3b8", marginLeft: "6px" }}>(actual {actual}%)</span>}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          className="mixSlider"
+                          value={target}
+                          onChange={(e) => handleMixSliderChange("channel_mix", key, Number(e.target.value))}
+                        />
+                      </div>
+                    );
+                  })}
+
+                  {/* 70-20-10 achieved ratio */}
+                  <div style={{ marginTop: "20px", paddingTop: "16px", borderTop: "1px solid #e2e8f0" }}>
+                    <p style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", marginBottom: "8px" }}>
+                      70-20-10 achieved ratio
+                    </p>
+                    {[
+                      { label: "Experiential", pct: seventyTwentyTen.experiential, color: "#2563eb" },
+                      { label: "Social", pct: seventyTwentyTen.social, color: "#7c3aed" },
+                      { label: "Formal", pct: seventyTwentyTen.formal, color: "#f59e0b" }
+                    ].map((row) => (
+                      <div key={row.label} style={{ marginBottom: "8px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#475569", marginBottom: "3px" }}>
+                          <span>{row.label}</span>
+                          <span>{row.pct}%</span>
+                        </div>
+                        <div style={{ background: "#f1f5f9", borderRadius: "999px", height: "8px", overflow: "hidden" }}>
+                          <div style={{ width: `${Math.min(100, row.pct)}%`, background: row.color, height: "100%" }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 {/* VALIDATION */}
                 <div className="rightCard">
@@ -264,11 +422,13 @@ export default function ArchitectureStage() {
                 </div>
 
                 {/* RATIONALE */}
-                {architecture.rationale && (architecture.rationale.shape_reason || architecture.rationale.sequencing_reason) && (
+                {architecture.rationale && Object.values(architecture.rationale).some(Boolean) && (
                   <div className="rightCard">
                     <h2>Why This Design</h2>
                     {architecture.rationale.shape_reason && <p>{architecture.rationale.shape_reason}</p>}
+                    {architecture.rationale.modality_reason && <p style={{ marginTop: "10px" }}>{architecture.rationale.modality_reason}</p>}
                     {architecture.rationale.sequencing_reason && <p style={{ marginTop: "10px" }}>{architecture.rationale.sequencing_reason}</p>}
+                    {architecture.rationale.faculty_reason && <p style={{ marginTop: "10px" }}>{architecture.rationale.faculty_reason}</p>}
                   </div>
                 )}
 
@@ -294,12 +454,17 @@ export default function ArchitectureStage() {
         .phaseBadge{background:#dbeafe;color:#2563eb;padding:8px 16px;border-radius:999px;font-weight:700;}
         .moduleCard{background:#f8fafc;border:1px solid #dbeafe;padding:18px;border-radius:18px;display:flex;justify-content:space-between;align-items:center;}
         .moduleCard p{color:#64748b;margin-top:6px;}
+        .tagChip{display:inline-block;background:#ede9fe;color:#6d28d9;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;margin-right:6px;text-transform:capitalize;}
         .rightCard{background:white;padding:24px;border-radius:24px;}
-        .rightCard h2{margin-bottom:20px;}
+        .rightCard h2{margin-bottom:8px;}
+        .provenanceChip{display:inline-block;background:#f1f5f9;color:#64748b;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;margin-bottom:14px;}
         .paramLabel{display:block;font-size:13px;font-weight:700;color:#64748b;margin-bottom:6px;margin-top:14px;}
         .paramInput{width:100%;padding:10px;border-radius:10px;border:1px solid #dbeafe;font-weight:600;}
         .applyBtn{width:100%;margin-top:18px;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#2563eb,#7c3aed);color:white;font-weight:700;cursor:pointer;font-size:14px;}
         .applyBtn:hover{opacity:0.92;}
+        .resetLink{background:none;border:none;color:#2563eb;font-size:12px;font-weight:700;cursor:pointer;padding:0;}
+        .resetLink:hover{text-decoration:underline;}
+        .mixSlider{width:100%;margin-top:4px;accent-color:#2563eb;}
         .warning{color:#f59e0b;margin-bottom:10px;}
         .success{color:#10b981;}
       `}</style>
