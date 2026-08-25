@@ -5,7 +5,6 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' }
 });
 
-// ── Auto-attach token to every request ──────────
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('pis_token');
   if (token) {
@@ -14,7 +13,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// ── AUTH ─────────────────────────────────────────
 export const loginUser = async (email, password) => {
   const res = await api.post('/auth/login', { email, password });
   return res.data;
@@ -25,7 +23,6 @@ export const signupUser = async (data) => {
   return res.data;
 };
 
-// ── OPPORTUNITIES ────────────────────────────────
 export const createOpportunity = async (data) => {
   const res = await api.post('/opportunities', data);
   return res.data;
@@ -41,34 +38,26 @@ export const getOpportunity = async (id) => {
   return res.data;
 };
 
-// ── AI AGENTS ────────────────────────────────────
 export const generateQuestions = async (id) => {
   const res = await api.post(`/opportunities/${id}/questions`);
   return res.data;
 };
 
-// Essentiality bands, suppression decisions + audit trail, and (for Repeat /
-// Same-Cohort modes) the previous_cohort_context block. Backed by
-// GET /opportunities/:id/questions/context — see questionsContextService.js.
 export const getQuestionsContext = async (id) => {
   const res = await api.get(`/opportunities/${id}/questions/context`);
   return res.data;
 };
 
-// ── ANSWER COLUMN (3-option resolver) ────────────
-// mode: 'from_brief' | 'flagged_to_client' | 'draft_assumption'
 export const resolveAnswer = async (opportunityId, questionIndex, mode) => {
   const res = await api.post(`/opportunities/${opportunityId}/questions/${questionIndex}/resolve`, { mode });
   return res.data;
 };
 
-// Manual edit of the answer text box (used after auto-fill too)
 export const updateQuestionAnswer = async (opportunityId, questionIndex, answer_text) => {
   const res = await api.patch(`/opportunities/${opportunityId}/questions/${questionIndex}`, { answer_text });
   return res.data;
 };
 
-// ── FRAMEWORK BUTTON ──────────────────────────────
 export const setQuestionFramework = async (opportunityId, questionIndex, framework_used) => {
   const res = await api.patch(`/opportunities/${opportunityId}/questions/${questionIndex}/framework`, { framework_used });
   return res.data;
@@ -84,8 +73,11 @@ export const recommendModules = async (id) => {
   return res.data;
 };
 
-export const buildArchitecture = async (id, force = false) => {
-  const res = await api.post(`/opportunities/${id}/architecture${force ? '?regenerate=true' : ''}`);
+export const buildArchitecture = async (id, force = false, designParameters = null) => {
+  const res = await api.post(
+    `/opportunities/${id}/architecture${force ? '?regenerate=true' : ''}`,
+    designParameters ? { design_parameters: designParameters } : {}
+  );
   return res.data;
 };
 
@@ -99,7 +91,6 @@ export const scoreProposal = async (id, force = false) => {
   return res.data;
 };
 
-// ── COMPETENCY FRAMEWORK ──────────────────────────
 export const getCompetencyFramework = async () => {
   const res = await api.get('/competencies');
   return res.data;
@@ -119,7 +110,6 @@ export const resetCompetencyFramework = async () => {
   return res.data;
 };
 
-// ── COMPETENCY DECISIONS ──────────────────────────
 export const saveCompetencyDecision = async (opportunityId, competencyId, decision) => {
   const res = await api.patch(
     `/opportunities/${opportunityId}/competencies/${competencyId}/decision`,
@@ -127,8 +117,6 @@ export const saveCompetencyDecision = async (opportunityId, competencyId, decisi
   );
   return res.data;
 };
-
-// ── Alias ────────────────────────────────────────
 export const analyseBrief = createOpportunity;
 
 export default api;
