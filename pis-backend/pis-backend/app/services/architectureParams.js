@@ -1,20 +1,10 @@
-// ── ARCHITECTURE DESIGN PARAMETERS & VALIDATION ──────────────
-// Deterministic logic only — no LLM calls in this file.
-// Adapted from the Stage 4 build spec (§5.3 default inference, §9.1 validation rules),
-// scoped down to what this MVP's data model can actually support:
-//   - duration/format/reinforcement/measurement_depth (not all 7 parameter groups)
-//   - competency coverage, day overload, faculty overload, missing capstone
-//     (not the full deterministic rule set, which assumes a richer block/element model)
-
-// ── Pull a duration in days out of the free-text constraints Agent 1 produced ──
 const parseDurationDays = (opportunity) => {
   const text = (opportunity.interpreted?.constraints || []).join(' ').toLowerCase();
   const match = text.match(/(\d+)\s*[- ]?\s*day/);
   if (match) return parseInt(match[1], 10);
-  return 3; // fallback used by the spec for thin briefs
+  return 3;
 };
 
-// ── Pull a format out of the same free-text constraints ──
 const parseFormat = (opportunity) => {
   const text = (opportunity.interpreted?.constraints || []).join(' ').toLowerCase();
   if (text.includes('virtual')) return 'virtual';
@@ -23,7 +13,6 @@ const parseFormat = (opportunity) => {
   return 'residential';
 };
 
-// ── Shape template inference (spec §5.3, group A) ──
 const inferTemplate = (durationDays, format) => {
   if (durationDays <= 1) return 'intensive_1d';
   if (durationDays <= 3) return format === 'hybrid' ? 'hybrid_sprint' : 'intensive_3d';
@@ -31,14 +20,12 @@ const inferTemplate = (durationDays, format) => {
   return 'modular_monthly';
 };
 
-// ── Reinforcement inference (spec §5.3, group E) ──
 const inferReinforcement = (durationDays) => {
   if (durationDays <= 2) return 'light';
   if (durationDays <= 5) return 'medium';
   return 'heavy';
 };
 
-// ── Measurement depth inference (spec §5.3, group F) ──
 const inferMeasurementDepth = (opportunity) => {
   const text = [
     ...(opportunity.interpreted?.goals || []),
@@ -53,32 +40,51 @@ const inferMeasurementDepth = (opportunity) => {
   return 2;
 };
 
-// ── Build the full starting DesignParameters object for an opportunity ──
+const inferAudienceLevel = (opportunity) => {
+  const text = (opportunity.interpreted?.audience?.value || '').toLowerCase();
+  if (/\b(ceo|cxo|c-suite|c suite|board|chairman|managing director|president)\b/.test(text)) return 'Top';
+  if (/\b(vp|vice president|director|senior manager|head of|general manager|\bgm\b)\b/.test(text)) return 'Senior';
+  return 'Mid';
+};
+
+const CONTACT_HOUR_CEILING = { Mid: 7, Senior: 6, Top: 5 };
+
+const MODALITY_DEFAULTS = {
+  residential: { sync_in_person: 100, sync_virtual: 0, async_self_paced: 0, async_social: 0 },
+  virtual: { sync_in_person: 0, sync_virtual: 70, async_self_paced: 30, async_social: 0 },
+  hybrid: { sync_in_person: 50, sync_virtual: 0, async_self_paced: 30, async_social: 20 },
+  modular: { sync_in_person: 30, sync_virtual: 30, async_self_paced: 30, async_social: 10 }
+};
+const inferModalityMix = (format) => ({ ...(MODALITY_DEFAULTS[format] || MODALITY_DEFAULTS.residential) });
+
+const CHANNEL_SEEDS = {
+  Mid: { lecture: 15, case: 20, simulation: 15, action_learning: 20, coaching: 10, peer_learning: 15, reflection: 5 },
+  Senior: { lecture: 10, case: 25, simulation: 15, action_learning: 25, coaching: 10, peer_learning: 10, reflection: 5 },
+  Top: { lecture: 5, case: 20, simulation: 10, action_learning: 35, coaching: 15, peer_learning: 10, reflection: 5 }
+};
+const inferChannelMix = (audienceLevel) => ({ ...(CHANNEL_SEEDS[audienceLevel] || CHANNEL_SEEDS.Mid) });
+
 const inferDesignParameters = (opportunity) => {
   const total_duration_days = parseDurationDays(opportunity);
   const format = parseFormat(opportunity);
+  const audience_level = inferAudienceLevel(opportunity);
   return {
     total_duration_days,
     format,
     template: inferTemplate(total_duration_days, format),
     reinforcement: inferReinforcement(total_duration_days),
-    measurement_depth: inferMeasurementDepth(opportunity)
+    measurement_depth: inferMeasurementDepth(opportunity),
+    audience_level,
+    modality_mix: inferModalityMix(format),
+    channel_mix: inferChannelMix(audience_level)
   };
 };
 
-// ── Deterministic validation, run on a generated (or stored) architecture ──
-// This is intentionally separate from whatever "validation" the LLM returns —
-// the LLM's self-reported warnings are a hint, not a source of truth.
 const computeDerivedMetrics = (architectureResult, opportunity, designParameters) => {
   const acceptedCompetencies = (opportunity.competencies || [])
     .filter((c) => c.decision !== 'rejected')
     .map((c) => c.competency_id);
 
-  // ── Derive coverage from modules actually scheduled in the architecture,
-  // cross-referenced against real module.competencies data — NOT from the
-  // LLM's self-reported validation.competencies_covered, which is often
-  // left empty and was previously making every architecture look like a
-  // 0% coverage gap regardless of the real modules used. ──
   const scheduledModuleTitles = new Set(
     (architectureResult.phases || [])
       .flatMap((p) => p.blocks || [])
@@ -91,8 +97,6 @@ const computeDerivedMetrics = (architectureResult, opportunity, designParameters
   );
   const missing = acceptedCompetencies.filter((id) => !coveredByModules.has(id));
   const covered = acceptedCompetencies.length - missing.length;
-
-  // ── Faculty utilisation, computed from actual blocks, not self-reported ──
   const facultyHours = {};
   let totalHours = 0;
   (architectureResult.phases || []).forEach((phase) => {
@@ -110,12 +114,76 @@ const computeDerivedMetrics = (architectureResult, opportunity, designParameters
     pct: totalHours ? Math.round((hours / totalHours) * 100) : 0
   }));
 
+  const modalityHours = { sync_in_person: 0, sync_virtual: 0, async_self_paced: 0, async_social: 0 };
+  const channelHours = { lecture: 0, case: 0, simulation: 0, action_learning: 0, coaching: 0, peer_learning: 0, reflection: 0 };
+  const competencyHours = {};
+
+  (architectureResult.phases || []).forEach((phase) => {
+    (phase.blocks || []).forEach((block) => {
+      const hrs = Number(block.duration_hrs) || 0;
+      if (block.modality && Object.prototype.hasOwnProperty.call(modalityHours, block.modality)) {
+        modalityHours[block.modality] += hrs;
+      }
+      if (block.channel && Object.prototype.hasOwnProperty.call(channelHours, block.channel)) {
+        channelHours[block.channel] += hrs;
+      }
+      const blockModules = (block.modules || [])
+        .map((title) => scheduledModules.find((m) => m.title === title))
+        .filter(Boolean);
+      if (blockModules.length) {
+        const hrsPerModule = hrs / blockModules.length;
+        blockModules.forEach((m) => {
+          (m.competencies_covered || []).forEach((cid) => {
+            competencyHours[cid] = (competencyHours[cid] || 0) + hrsPerModule;
+          });
+        });
+      }
+    });
+  });
+
+  const toPct = (hoursMap) => Object.fromEntries(
+    Object.entries(hoursMap).map(([k, v]) => [k, totalHours ? Math.round((v / totalHours) * 100) : 0])
+  );
+  const modalityActualMix = toPct(modalityHours);
+  const channelActualMix = toPct(channelHours);
+
+  const seventyTwentyTen = {
+    formal: channelActualMix.lecture || 0,
+    social: (channelActualMix.coaching || 0) + (channelActualMix.peer_learning || 0),
+    experiential: (channelActualMix.case || 0) + (channelActualMix.simulation || 0)
+      + (channelActualMix.action_learning || 0) + (channelActualMix.reflection || 0)
+  };
+
+  const audienceLevel = designParameters.audience_level || 'Mid';
+  const dayHourCeiling = CONTACT_HOUR_CEILING[audienceLevel] || 7;
+
   const warnings = [];
 
   (architectureResult.phases || []).forEach((phase) => {
     const phaseHours = (phase.blocks || []).reduce((s, b) => s + (Number(b.duration_hrs) || 0), 0);
-    if (phaseHours > 8) {
-      warnings.push(`${phase.phase} is scheduled for ${phaseHours}h, above the 8h/day guideline`);
+    if (phaseHours > dayHourCeiling) {
+      warnings.push(`${phase.phase} is scheduled for ${phaseHours}h, above the ${dayHourCeiling}h/day guideline for a ${audienceLevel} audience`);
+    }
+  });
+
+  const overFocused = Object.entries(competencyHours)
+    .filter(([, hrs]) => totalHours > 0 && hrs / totalHours > 0.4)
+    .map(([cid]) => cid);
+  if (overFocused.length > 0) {
+    warnings.push(
+      `Competenc${overFocused.length === 1 ? 'y' : 'ies'} ${overFocused.join(', ')} account${overFocused.length === 1 ? 's' : ''} for over 40% of programme minutes`
+    );
+  }
+  if (['Senior', 'Top'].includes(audienceLevel) && channelActualMix.lecture > 25) {
+    warnings.push(`Lecture is ${channelActualMix.lecture}% of programme time for a ${audienceLevel} audience, above the 25% guideline from the 70-20-10 framework`);
+  }
+
+  const modalityTarget = designParameters.modality_mix || {};
+  Object.keys(modalityHours).forEach((channel) => {
+    const target = Number(modalityTarget[channel]) || 0;
+    const actual = modalityActualMix[channel] || 0;
+    if (Math.abs(actual - target) > 10) {
+      warnings.push(`Modality "${channel.replace(/_/g, ' ')}" is placed at ${actual}% vs a ${target}% target, more than 10 points off`);
     }
   });
 
@@ -142,8 +210,11 @@ const computeDerivedMetrics = (architectureResult, opportunity, designParameters
   return {
     competency_coverage: { covered, total: acceptedCompetencies.length, missing },
     faculty_utilisation: facultyUtilisation,
+    modality_actual_mix: modalityActualMix,
+    channel_actual_mix: channelActualMix,
+    seventy_twenty_ten: seventyTwentyTen,
     warnings
   };
 };
 
-module.exports = { inferDesignParameters, computeDerivedMetrics };
+module.exports = { inferDesignParameters, computeDerivedMetrics, inferModalityMix, inferChannelMix, inferAudienceLevel };
