@@ -1,6 +1,3 @@
-// ── PROMPT REGISTRY ──────────────────────────────
-// : all prompts live here with versions
-// Never write prompt strings inside service files
 const OUTPUT_RULES = `
 Never use em dashes (—) in your response. Use commas, periods, or rewrite the sentence instead.
 Never mention that you are an AI, a language model, or that this content was AI-generated.
@@ -8,9 +5,6 @@ Never add disclaimers, meta-commentary, or notes about how the response was crea
 Write only the requested content directly.`;
 const PROMPTS = {
   
-
-  // ── AGENT 1: Brief Interpreter ─────────────────
-  // ── AGENT 1: Brief Interpreter ─────────────────
   brief_interpretation: {
     version: 'v2',
     model: 'claude-haiku-4-5',
@@ -70,7 +64,6 @@ Rules:
 - ambiguities: what is unclear or missing (this stays a plain array of strings, not wrapped in source/confidence)`
   },
 
-  // ── AGENT 2: Question Generator ────────────────
   question_generation: {
     version: 'v1',
     model: 'claude-sonnet-4-6',
@@ -111,10 +104,6 @@ Return EXACTLY this JSON:
 }`
   },
 
-  // ── AGENT 2b: Answer Resolver (NEW) ────────────
-  // Used by the 3-option answer column on the Questions page.
-  // mode: 'from_brief'       -> Option 1: pull the answer straight out of the brief text
-  // mode: 'draft_assumption' -> Option 3: draft a reasonable first-pass assumption
   answer_resolution: {
     version: 'v1',
     model: 'claude-haiku-4-5',
@@ -150,7 +139,6 @@ If the brief does NOT contain a clear answer to this question, return:
 Be strict — only set found:true if the brief genuinely addresses this question. Do not invent information.`;
       }
 
-      // mode === 'draft_assumption'
       return `The client brief below does NOT clearly answer this discovery question.
 Draft a sensible FIRST-DRAFT ASSUMPTION a Learning Architect could propose to the client,
 based on standard practice for similar executive education programmes and whatever context
@@ -170,7 +158,6 @@ Return EXACTLY this JSON:
     }
   },
 
-  // ── AGENT 3: Competency Mapper ─────────────────
   competency_mapping: {
     version: 'v1',
     model: 'claude-haiku-4-5',
@@ -208,7 +195,6 @@ Rules:
 - Order by fit_score descending`
   },
 
-  // ── AGENT 5: Architecture Builder ──────────────
   architecture_builder: {
     version: 'v2',
     model: 'claude-haiku-4-5',
@@ -223,7 +209,7 @@ ${OUTPUT_RULES}`,
 
 CLIENT: ${opportunity.client_name}
 GOALS: ${opportunity.interpreted?.goals?.value?.join(', ')}
-AUDIENCE: ${opportunity.interpreted?.audience?.value}
+AUDIENCE: ${opportunity.interpreted?.audience?.value} (level: ${designParameters.audience_level || 'Mid'})
 CONSTRAINTS: ${opportunity.interpreted?.constraints?.value?.join(', ')}
 MODULES AVAILABLE:
 ${opportunity.modules?.map((m, i) =>
@@ -236,6 +222,12 @@ DESIGN PARAMETERS (set by the BD Manager, must be respected):
 - Shape template: ${designParameters.template}
 - Reinforcement level: ${designParameters.reinforcement} (light = no follow-up, medium = a few reinforcement touchpoints after the main days, heavy = structured reinforcement cadence over weeks)
 - Measurement depth: ${designParameters.measurement_depth} out of 4 (1 = reaction only, 2 = learning/knowledge check, 3 = behaviour change tracked on the job, 4 = tied to a business KPI)
+- Modality mix target (Layer 2, percent of total contact hours): sync in-person ${designParameters.modality_mix?.sync_in_person ?? 0}%, sync virtual ${designParameters.modality_mix?.sync_virtual ?? 0}%, async self-paced ${designParameters.modality_mix?.async_self_paced ?? 0}%, async social ${designParameters.modality_mix?.async_social ?? 0}%
+- Learning channel mix target (Layer 3, percent of total contact hours): lecture ${designParameters.channel_mix?.lecture ?? 0}%, case ${designParameters.channel_mix?.case ?? 0}%, simulation ${designParameters.channel_mix?.simulation ?? 0}%, action learning ${designParameters.channel_mix?.action_learning ?? 0}%, coaching ${designParameters.channel_mix?.coaching ?? 0}%, peer learning ${designParameters.channel_mix?.peer_learning ?? 0}%, reflection ${designParameters.channel_mix?.reflection ?? 0}%
+
+Every block must carry a "modality" tag (one of: sync_in_person, sync_virtual, async_self_paced, async_social)
+and a "channel" tag (one of: lecture, case, simulation, action_learning, coaching, peer_learning, reflection),
+chosen so that the programme's overall hour-weighted mix across all blocks lands close to the two targets above.
 
 Build a programme architecture and return EXACTLY this JSON:
 {
@@ -254,6 +246,8 @@ Build a programme architecture and return EXACTLY this JSON:
           "modules": ["module title"],
           "faculty": "faculty name",
           "format": "Online reading",
+          "modality": "async_self_paced",
+          "channel": "reflection",
           "duration_hrs": 1
         }
       ]
@@ -269,6 +263,8 @@ Build a programme architecture and return EXACTLY this JSON:
           "modules": [],
           "faculty": "",
           "format": "Plenary",
+          "modality": "sync_in_person",
+          "channel": "lecture",
           "duration_hrs": 1
         }
       ]
@@ -280,7 +276,9 @@ Build a programme architecture and return EXACTLY this JSON:
   },
   "rationale": {
     "shape_reason": "one or two sentences on why this duration/format/template fits this brief",
-    "sequencing_reason": "one or two sentences on why the modules are ordered this way across the phases"
+    "modality_reason": "one or two sentences on why this modality split (sync/virtual/async) fits the format, budget, and audience",
+    "sequencing_reason": "one or two sentences on why the modules are ordered this way across the phases",
+    "faculty_reason": "one or two sentences on why the named faculty were assigned to their sessions"
   }
 }
 
@@ -288,14 +286,13 @@ Rules:
 - Total duration must match the design parameters above (${designParameters.total_duration_days} day(s))
 - Format must match the design parameters above (${designParameters.format})
 - Pre-work: 1-2 online modules
-- Each day: 6-8 hours max
+- Each day: respect the per-day contact hour ceiling implied by the audience level above (Mid 7h, Senior 6h, Top 5h)
 - Last day must include capstone or action planning if reinforcement is medium or heavy
 - Use only modules from the list provided
 - warnings: flag any overloaded days or missing competencies
-- rationale fields are required and must reference the actual brief, not generic text`
+- rationale fields are all required and must reference the actual brief, not generic text`
   },
 
-  // ── AGENT 6: Approach Note Writer ──────────────
   approach_note: {
     version: 'v1',
     model: 'claude-sonnet-4-6',
@@ -342,7 +339,6 @@ Critical rules:
 - Do not invent past client names`
   },
 
-  // ── PROPOSAL SCORER ────────────────────────────
   proposal_scoring: {
     version: 'v1',
     model: 'claude-haiku-4-5',
