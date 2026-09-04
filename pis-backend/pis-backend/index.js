@@ -50,7 +50,13 @@ app.get('/', (req, res) => {
   });
 });
 
-app.listen(process.env.PORT, () => {
-  console.log('🚀 PIS Backend v2 running on port', process.env.PORT);
-  console.log('✅ CORS enabled for ALL vercel.app origins');
-});
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+
+  app.listen(PORT, () => {
+    console.log('🚀 PIS Backend v2 running on port', PORT);
+    console.log('✅ CORS enabled for ALL vercel.app origins');
+  });
+}
+
+module.exports = app;
