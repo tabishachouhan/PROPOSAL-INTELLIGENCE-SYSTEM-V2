@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: (import.meta.env.VITE_API_URL || ' https://proposal-intelligence-system-f-dnnr.vercel.app/') + '/api',
+  baseURL: (import.meta.env.VITE_API_URL || ' https://proposal-intelligence-system-v2-antr.onrender.com/') + '/api',
   headers: { 'Content-Type': 'application/json' }
 });
 
