@@ -1,0 +1,139 @@
+const mongoose = require('mongoose');
+const Opportunity = require('../models/Opportunity');
+const DiscoveryAnswer = require('../models/discoveryAnswer.model');
+const Module = require('../models/Module');
+const Programme = require('../models/Programme');
+const { CONTACT_HOUR_CEILING } = require('./architectureParams');
+
+const UNMAPPED_DISCOVERY_SLOTS = [
+  'baseline',        
+  'behaviour',       
+  'faculty_archetype', 
+  'exclusion_list',  
+  'decision_dynamics', 
+  'measurement'      
+];
+
+const buildDiscoveryAnswersBlock = async (opportunityId) => {
+  const answers = await DiscoveryAnswer.find({ opportunityId }).lean();
+
+  const by_theme = answers.reduce((acc, a) => {
+    acc[a.themeCode] = acc[a.themeCode] || [];
+    acc[a.themeCode].push({
+      question_id: a.questionId,
+      status: a.status,
+      value: a.value,
+      answered_by: a.answeredBy
+    });
+    return acc;
+  }, {});
+
+  const unmapped = UNMAPPED_DISCOVERY_SLOTS.reduce((acc, slot) => {
+    acc[slot] = null; // see file header — not wired to the current question bank
+    return acc;
+  }, {});
+
+  return { ...unmapped, by_theme };
+};
+
+const buildAcceptedCompetencies = (opportunity) =>
+  (opportunity.competencies || [])
+    .filter((c) => c.decision === 'accepted')
+    .map((c) => ({
+      id: c.competency_id,
+      name: c.competency_name,
+      cluster: c.cluster,
+      classification: null, 
+      confidence: c.fit_score ?? null
+    }));
+
+const buildFacultyPoolStub = (modules) => {
+  const names = new Set(modules.map((m) => m.lead_faculty).filter(Boolean));
+  return Array.from(names).map((name) => ({
+    name,
+    archetype: null, // no Faculty collection yet — see file header
+    modules_covered: modules.filter((m) => m.lead_faculty === name).map((m) => m.module_id)
+  }));
+};
+
+const buildMasterData = async (tenantId) => {
+  const modules = await Module.find({ tenant_id: tenantId, status: 'Active' }).lean();
+
+  return {
+    module_library: modules,
+    faculty_pool: buildFacultyPoolStub(modules),
+    rate_card: null, 
+    contact_hours_per_day: CONTACT_HOUR_CEILING
+  };
+};
+
+const buildPreviousCohortArchitecture = async (previousOpportunityId, tenantId) => {
+  if (!previousOpportunityId) return null;
+
+  const locked = await Programme.findOne({
+    opportunity_id: previousOpportunityId,
+    tenant_id: tenantId,
+    status: 'locked'
+  })
+    .sort({ version: -1 })
+    .lean();
+
+  return locked || null;
+};
+
+const buildExistingDraft = async (opportunityId, tenantId) => {
+  const draft = await Programme.findOne({
+    opportunity_id: opportunityId,
+    tenant_id: tenantId,
+    status: { $in: ['draft', 'in-review'] }
+  })
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  return draft || null;
+};
+
+const buildArchitectureContext = async (opportunityId, tenantId) => {
+  if (!mongoose.isValidObjectId(opportunityId)) {
+    const err = new Error('Invalid opportunity id');
+    err.status = 400;
+    throw err;
+  }
+
+  const opportunity = await Opportunity.findOne({ _id: opportunityId, tenant_id: tenantId });
+  if (!opportunity) {
+    const err = new Error('Opportunity not found');
+    err.status = 404;
+    throw err;
+  }
+
+  const [discovery_answers, accepted_competencies, master_data, previous_cohort_architecture, existing_draft] =
+    await Promise.all([
+      buildDiscoveryAnswersBlock(opportunityId),
+      Promise.resolve(buildAcceptedCompetencies(opportunity)),
+      buildMasterData(tenantId),
+      buildPreviousCohortArchitecture(opportunity.previous_opportunity_id, tenantId),
+      buildExistingDraft(opportunityId, tenantId)
+    ]);
+
+  return {
+    opportunity: {
+      id: opportunity._id,
+      programme_kind: opportunity.programme_mode || 'new',
+      previous_opportunity_id: opportunity.previous_opportunity_id || null,
+      brief_interpretation: {
+        goals: opportunity.interpreted?.goals || null,
+        audience: opportunity.interpreted?.audience || null,
+        stakeholder_map: opportunity.interpreted?.stakeholder_map || null
+      },
+      logistics: opportunity.logistics || {}
+    },
+    discovery_answers,
+    accepted_competencies,
+    master_data,
+    previous_cohort_architecture,
+    existing_draft
+  };
+};
+
+module.exports = { buildArchitectureContext, UNMAPPED_DISCOVERY_SLOTS };
