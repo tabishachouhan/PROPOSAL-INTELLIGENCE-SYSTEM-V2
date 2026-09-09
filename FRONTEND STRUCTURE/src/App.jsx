@@ -1,13 +1,14 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 
+/* AUTH */
 import AuthPage from "./components/AuthPage";
 
+/* PAGES */
 import Dashboard from "./pages/Dashboard";
 import IntakeStage from "./pages/IntakeStage";
 import QuestionsStage from "./pages/QuestionsStage";
 import MappingStage from "./pages/MappingStage";
 import ArchitectureStage from "./pages/ArchitectureStage";
-import ArchitectureBuilder from "./pages/ArchitectureBuilder";
 import ApproachStage from "./pages/ApproachStage";
 import ScoreStage from "./pages/ScoreStage";
 import FacultyDashboard from "./pages/FacultyDashboard";
@@ -61,13 +62,6 @@ function App() {
       <Route
         path="/architecture"
         element={<ArchitectureStage />}
-      />
-
-      {/* PROGRAMME ARCHITECTURE — v2 (five-region shell, new Programme model) */}
-
-      <Route
-        path="/architecture-v2"
-        element={<ArchitectureBuilder />}
       />
 
       {/* APPROACH NOTE */}
