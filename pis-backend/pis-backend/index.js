@@ -40,7 +40,6 @@ mongoose.connect(process.env.MONGODB_URI)
 app.use('/api/auth', require('./app/routes/auth'));
 app.use('/api/opportunities', require('./app/routes/opportunities'));
 app.use('/api/competencies', require('./app/routes/competencies'));
-app.use('/api/programmes', require('./app/routes/programmes'));
 
 app.get('/', (req, res) => {
   res.json({
@@ -51,7 +50,15 @@ app.get('/', (req, res) => {
   });
 });
 
-app.listen(process.env.PORT, () => {
-  console.log('🚀 PIS Backend v2 running on port', process.env.PORT);
-  console.log('✅ CORS enabled for ALL vercel.app origins');
-});
+// Local development
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+
+  app.listen(PORT, () => {
+    console.log('🚀 PIS Backend v2 running on port', PORT);
+    console.log('✅ CORS enabled for ALL vercel.app origins');
+  });
+}
+
+// Vercel serverless/function entry
+module.exports = app;
