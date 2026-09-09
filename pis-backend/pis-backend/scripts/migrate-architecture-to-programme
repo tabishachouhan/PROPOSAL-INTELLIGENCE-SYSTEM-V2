@@ -1,0 +1,164 @@
+require('dotenv').config();
+const mongoose = require('mongoose');
+const Opportunity = require('../app/models/Opportunity');
+const Programme = require('../app/models/Programme');
+const Module = require('../app/models/Module');
+
+const DRY_RUN = process.argv.includes('--dry-run');
+const AS_DRAFT = process.argv.includes('--as-draft');
+
+const PHASE_KIND_PATTERNS = [
+  { pattern: /pre[- ]?work|pre[- ]?programme/i, kind: 'pre' },
+  { pattern: /capstone/i, kind: 'capstone' },
+  { pattern: /post[- ]?programme|follow[- ]?up|reinforcement/i, kind: 'post' },
+  { pattern: /sprint/i, kind: 'sprint' }
+];
+const inferPhaseKind = (name) => PHASE_KIND_PATTERNS.find((p) => p.pattern.test(name || ''))?.kind || 'core';
+
+const VALID_BLOCK_MODALITIES = ['sync_in_person', 'sync_virtual', 'async_self_paced', 'async_social'];
+const normaliseModality = (modality) => (VALID_BLOCK_MODALITIES.includes(modality) ? modality : 'sync_in_person');
+
+const buildTitleToModuleId = async (tenantId) => {
+  const modules = await Module.find({ tenant_id: tenantId }).select('module_id title').lean();
+  const map = new Map();
+  modules.forEach((m) => map.set(m.title, m.module_id));
+  return map;
+};
+
+const migrateOnePhase = (legacyPhase, order, startsRelativeDays, titleToModuleId, warnings) => {
+  const blocks = (legacyPhase.blocks || []).map((legacyBlock, blockOrder) => {
+    const durationMinutes = Math.round((Number(legacyBlock.duration_hrs) || 0) * 60);
+
+    const elements = (legacyBlock.modules || []).map((title, elOrder) => {
+      const moduleId = titleToModuleId.get(title) || null;
+      if (!moduleId) warnings.push(`Module title "${title}" did not match any Module document — module_id left null`);
+      return {
+        order: elOrder + 1,
+        type: 'module',
+        module_id: moduleId,
+        faculty: legacyBlock.faculty ? [legacyBlock.faculty] : [],
+        notes: moduleId ? undefined : `Legacy title: ${title}`,
+        derived_from: { layer: 'L4', source_field: 'legacy_migration', source_confidence: 0.5 }
+      };
+    });
+
+    return {
+      order: blockOrder + 1,
+      title: legacyBlock.title || `${legacyPhase.phase || 'Block'} ${blockOrder + 1}`,
+      start_time: legacyBlock.time_slot || undefined,
+      duration_minutes: durationMinutes || 30, // schema requires > 0-ish; never trust legacy data blindly
+      modality: normaliseModality(legacyBlock.modality),
+      elements
+    };
+  });
+
+  const totalHours = blocks.reduce((s, b) => s + b.duration_minutes / 60, 0);
+  const durationDays = Math.max(1, Math.ceil(totalHours / 8));
+
+  return {
+    phase: {
+      order,
+      name: legacyPhase.phase || `Phase ${order}`,
+      kind: inferPhaseKind(legacyPhase.phase),
+      starts_relative_days: startsRelativeDays,
+      duration_days: durationDays,
+      blocks
+    },
+    durationDays
+  };
+};
+
+const migrateDesignParameters = (legacy = {}) => ({
+  shape: {
+    total_duration_days: legacy.total_duration_days,
+    calendar_span_weeks: null,
+    template: legacy.template
+  },
+  modality_mix: legacy.modality_mix,
+  channel_mix: legacy.channel_mix,
+  reinforcement: legacy.reinforcement,
+  measurement_depth: legacy.measurement_depth
+});
+
+const migrateDerivedMetrics = (legacy = {}, warnings) => {
+  if (legacy.warnings?.length) {
+    warnings.push(...legacy.warnings.map((w) => `[legacy validation warning, not migrated] ${w}`));
+  }
+  return {
+    competency_coverage: legacy.competency_coverage,
+    modality_actual_mix: legacy.modality_actual_mix,
+    channel_actual_mix: legacy.channel_actual_mix,
+    faculty_utilisation: legacy.faculty_utilisation,
+    seventy_twenty_ten_ratio: legacy.seventy_twenty_ten
+  };
+};
+
+const migrateOpportunity = async (opportunity) => {
+  const warnings = [];
+  const titleToModuleId = await buildTitleToModuleId(opportunity.tenant_id);
+
+  let cursorDays = 0;
+  const phases = (opportunity.architecture.phases || []).map((legacyPhase, idx) => {
+    const { phase, durationDays } = migrateOnePhase(legacyPhase, idx + 1, cursorDays, titleToModuleId, warnings);
+    cursorDays += durationDays;
+    return phase;
+  });
+
+  const legacyParams = opportunity.architecture.design_parameters || {};
+
+  const programme = {
+    opportunity_id: opportunity._id,
+    tenant_id: opportunity.tenant_id,
+    version: 1,
+    status: AS_DRAFT ? 'draft' : 'locked',
+    name: `${opportunity.client_name} — Programme Architecture (migrated)`,
+    format: legacyParams.format,
+    total_duration_days: legacyParams.total_duration_days,
+    design_parameters: migrateDesignParameters(legacyParams),
+    derived_metrics: migrateDerivedMetrics(opportunity.architecture.derived_metrics, warnings),
+    rationale: opportunity.architecture.rationale,
+    phases,
+    created_by: opportunity.tenant_id
+  };
+
+  return { programme, warnings };
+};
+
+const run = async () => {
+  await mongoose.connect(process.env.MONGODB_URI);
+  console.log(`Connected. Mode: ${DRY_RUN ? 'DRY RUN' : 'WRITE'}, status: ${AS_DRAFT ? 'draft' : 'locked'}`);
+
+  const candidates = await Opportunity.find({ 'architecture.phases.0': { $exists: true } });
+  console.log(`Found ${candidates.length} opportunities with legacy architecture data.`);
+
+  let migrated = 0;
+  let skipped = 0;
+
+  for (const opportunity of candidates) {
+    const already = await Programme.findOne({ opportunity_id: opportunity._id });
+    if (already) {
+      skipped++;
+      continue;
+    }
+
+    const { programme, warnings } = await migrateOpportunity(opportunity);
+    console.log(`\n— ${opportunity.client_name} (${opportunity._id})`);
+    warnings.forEach((w) => console.log(`  ⚠ ${w}`));
+
+    if (!DRY_RUN) {
+      const created = await Programme.create(programme);
+      console.log(`  ✅ created Programme ${created._id}`);
+    } else {
+      console.log('  (dry run — not written)');
+    }
+    migrated++;
+  }
+
+  console.log(`\nDone. Migrated: ${migrated}, skipped (already had a Programme): ${skipped}.`);
+  await mongoose.disconnect();
+};
+
+run().catch((err) => {
+  console.error('Migration failed:', err);
+  process.exit(1);
+});
