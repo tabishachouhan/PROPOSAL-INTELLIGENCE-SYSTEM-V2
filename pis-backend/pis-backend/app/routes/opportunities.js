@@ -1,6 +1,8 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const Opportunity = require('../models/Opportunity');
+const Programme = require('../models/Programme');
 const { interpretBrief } = require('../services/interpretationService');
 const { generateQuestions } = require('../services/questionService');
 const { protect, requireRole } = require('../middleware/auth');
@@ -11,6 +13,7 @@ const { scoreProposal } = require('../services/scoringService');
 const { mapCompetencies } = require('../services/competencyService');
 const { recommendModules } = require('../services/moduleService');
 const { resolveFromBrief, draftAssumption } = require('../services/answerResolutionService');
+const { buildArchitectureContext } = require('../services/architectureContextService');
 
 router.post('/',
   protect,
@@ -537,6 +540,100 @@ router.post('/:id/architecture',
     } catch (err) {
       console.error('Error:', err.message);
       res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// ── ARCHITECTURE v2: LOAD-CONTRACT ────────────────────────────────────────
+// GET /api/opportunities/:id/architecture/context
+// Assembles the single payload the v2 Architecture page needs on load:
+// brief interpretation, discovery answers, accepted competencies, tenant
+// master data (modules/faculty/rate card), the previous cohort's locked
+// architecture (Repeat/Same-Cohort modes), and any existing draft Programme.
+// Read-only — does not build or mutate an architecture.
+router.get('/:id/architecture/context',
+  protect,
+  async (req, res) => {
+    try {
+      const context = await buildArchitectureContext(req.params.id, req.user.id);
+      res.json(context);
+    } catch (err) {
+      const status = err.status || 500;
+      if (status === 500) console.error('Error building architecture context:', err.message);
+      res.status(status).json({ error: err.message });
+    }
+  }
+);
+
+// ── ARCHITECTURE v2: CREATE DRAFT PROGRAMME ───────────────────────────────
+// POST /api/opportunities/:id/architecture/draft
+// Creates a new draft Programme document (the v2 model) seeded from the
+// same inferred defaults the MVP flow uses, mapped onto the new nested
+// design_parameters shape. This does NOT run the LLM generation pipeline —
+// it just gives the v2 page a persisted, empty-phases draft to build into.
+// Idempotent: returns the existing active draft instead of creating a
+// second one, same "reuse" pattern as opportunity creation above.
+router.post('/:id/architecture/draft',
+  protect,
+  requireRole('admin', 'editor'),
+  async (req, res) => {
+    try {
+      if (!mongoose.isValidObjectId(req.params.id)) {
+        return res.status(400).json({ error: 'Invalid opportunity id' });
+      }
+
+      const opportunity = await Opportunity.findOne({ _id: req.params.id, tenant_id: req.user.id });
+      if (!opportunity) return res.status(404).json({ error: 'Not found' });
+
+      const existingDraft = await Programme.findOne({
+        opportunity_id: opportunity._id,
+        tenant_id: req.user.id,
+        status: { $in: ['draft', 'in-review'] }
+      }).sort({ version: -1 });
+
+      if (existingDraft && req.query.regenerate !== 'true') {
+        return res.status(200).json({ success: true, reused: true, programme: existingDraft });
+      }
+
+      const inferred = inferDesignParameters(opportunity);
+      // audience_level informs future faculty/module suggestions but has no
+      // slot in the v2 design_parameters shape (spec Section 8) — dropped here.
+      const design_parameters = {
+        shape: {
+          total_duration_days: inferred.total_duration_days,
+          calendar_span_weeks: null,
+          template: inferred.template
+        },
+        modality_mix: inferred.modality_mix,
+        channel_mix: inferred.channel_mix,
+        reinforcement: inferred.reinforcement,
+        measurement_depth: inferred.measurement_depth
+      };
+
+      const lastVersion = await Programme.findOne({ opportunity_id: opportunity._id, tenant_id: req.user.id })
+        .sort({ version: -1 })
+        .select('version');
+
+      const programme = await Programme.create({
+        opportunity_id: opportunity._id,
+        tenant_id: req.user.id,
+        version: (lastVersion?.version || 0) + 1,
+        status: 'draft',
+        name: `${opportunity.client_name} — Programme Architecture`,
+        format: inferred.format,
+        total_duration_days: inferred.total_duration_days,
+        design_parameters,
+        phases: [],
+        created_by: req.user.id
+      });
+
+      res.status(201).json({ success: true, reused: false, programme });
+    } catch (err) {
+      if (err.name === 'ValidationError') {
+        return res.status(400).json({ error: err.message });
+      }
+      console.error('Failed to create draft programme:', err.message);
+      res.status(500).json({ error: 'Could not create draft programme' });
     }
   }
 );
