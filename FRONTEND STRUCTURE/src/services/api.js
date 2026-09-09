@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api',
+  baseURL: (import.meta.env.VITE_API_URL || 'https://proposal-intelligence-system-f-tcm8.vercel.app/') + '/api',
   headers: { 'Content-Type': 'application/json' }
 });
 
@@ -78,34 +78,6 @@ export const buildArchitecture = async (id, force = false, designParameters = nu
     `/opportunities/${id}/architecture${force ? '?regenerate=true' : ''}`,
     designParameters ? { design_parameters: designParameters } : {}
   );
-  return res.data;
-};
-
-// ── Architecture v2 (Programme model) ──────────────────────────────────
-export const getArchitectureContext = async (opportunityId) => {
-  const res = await api.get(`/opportunities/${opportunityId}/architecture/context`);
-  return res.data;
-};
-
-export const createArchitectureDraft = async (opportunityId, regenerate = false) => {
-  const res = await api.post(
-    `/opportunities/${opportunityId}/architecture/draft${regenerate ? '?regenerate=true' : ''}`
-  );
-  return res.data;
-};
-
-export const getProgramme = async (programmeId) => {
-  const res = await api.get(`/programmes/${programmeId}`);
-  return res.data;
-};
-
-export const updateProgramme = async (programmeId, updates) => {
-  const res = await api.patch(`/programmes/${programmeId}`, updates);
-  return res.data;
-};
-
-export const listProgrammes = async (opportunityId) => {
-  const res = await api.get(`/programmes`, { params: { opportunity_id: opportunityId } });
   return res.data;
 };
 
