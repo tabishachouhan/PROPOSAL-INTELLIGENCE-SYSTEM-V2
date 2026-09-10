@@ -161,7 +161,11 @@ Return EXACTLY this JSON:
   competency_mapping: {
     version: 'v1',
     model: 'claude-haiku-4-5',
-    max_tokens: 600,
+    // was 600 — with a ~40-row framework and a rationale sentence per each
+    // of the 5 selected competencies, output was tight enough to sometimes
+    // get cut off mid-JSON, which made the response fail to parse (or
+    // jsonrepair "repairing" it into something missing mapped_competencies)
+    max_tokens: 1500,
     temperature: 0,
     system: `You are an expert in executive education competency frameworks.
 Map training needs to competencies accurately.
