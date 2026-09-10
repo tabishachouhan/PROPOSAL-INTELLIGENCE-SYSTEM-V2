@@ -354,11 +354,17 @@ CLIENT: ${opportunity.client_name}
 GOALS: ${opportunity.interpreted?.goals?.value?.join(', ')}
 COMPETENCIES MAPPED: ${opportunity.competencies?.length || 0}
 MODULES SELECTED: ${opportunity.modules?.length || 0}
-APPROACH NOTE SECTIONS: ${Object.keys(opportunity.approach_note?.sections || {}).join(', ')}
+APPROACH NOTE SECTIONS: ${
+  opportunity.approach_note?.version === 2
+    ? ['context_and_challenge', 'programme_philosophy', 'theme_module_mapping', 'learning_journey', 'faculty_bench', 'evaluation_approach', 'analogous_engagements', 'investment']
+        .filter(k => opportunity.approach_note?.[k] && (Array.isArray(opportunity.approach_note[k]) ? opportunity.approach_note[k].length : true))
+        .join(', ')
+    : Object.keys(opportunity.approach_note?.sections || {}).join(', ')
+}
 
 APPROACH NOTE PREVIEW:
-Context: ${opportunity.approach_note?.sections?.context_and_challenge?.substring(0, 200) || 'Not written'}
-Philosophy: ${opportunity.approach_note?.sections?.programme_philosophy?.substring(0, 200) || 'Not written'}
+Context: ${(opportunity.approach_note?.context_and_challenge || opportunity.approach_note?.sections?.context_and_challenge)?.substring(0, 200) || 'Not written'}
+Philosophy: ${(opportunity.approach_note?.programme_philosophy || opportunity.approach_note?.sections?.programme_philosophy)?.substring(0, 200) || 'Not written'}
 
 Score this proposal on 6 dimensions and return EXACTLY this JSON:
 {

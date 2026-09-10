@@ -138,9 +138,44 @@ const OpportunitySchema = new mongoose.Schema({
 
   approach_note: {
     sections: mongoose.Schema.Types.Mixed,
-    version:  { type: Number, default: 1 }
-  },
 
+    theme_module_mapping: [{
+      theme:       String,
+      description: String,
+      modules:     [String]
+    }],
+
+    learning_journey: [{
+      phase:    String,
+      duration: String,
+      blocks: [{
+        title:        String,
+        modules:      [String],
+        faculty:      String,
+        format:       String,
+        duration_hrs: Number
+      }]
+    }],
+
+    investment: {
+      line_items: [{
+        description: String,
+        qty:         String,
+        unit_price:  String,
+        total:       String
+      }],
+      is_confirmed:   { type: Boolean, default: false },
+      validity_note:  { type: String, default: "Pricing to be confirmed with commercial team" }
+    },
+
+    context_and_challenge:  String,
+    programme_philosophy:   String,
+    faculty_bench:          String,
+    evaluation_approach:    String,
+    analogous_engagements:  String,
+
+    version: { type: Number, default: 1 }
+  },
   
   score: {
     total:        Number,
