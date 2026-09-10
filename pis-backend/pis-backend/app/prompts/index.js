@@ -293,8 +293,16 @@ Rules:
 - rationale fields are all required and must reference the actual brief, not generic text`
   },
 
+  // ── APPROACH NOTE v2 ──────────────────────────────
+  // Structured schema (see PIS Stage 6 Approach Note Work Division v2):
+  // - theme_module_mapping + learning_journey are structured, not paragraphs
+  // - learning_journey narrates architecture.phases, it never invents a new schedule
+  // - the LLM NEVER writes a pricing figure. It only writes a short, number-free
+  //   "investment_note". The real investment table is assembled by
+  //   approachNoteService from real data (logistics.budget / rate card), never
+  //   from the model's own guess. See buildInvestment() in approachNoteService.js.
   approach_note: {
-    version: 'v1',
+    version: 'v2',
     model: 'claude-sonnet-4-6',
     max_tokens: 8000,
     temperature: 0.7,
@@ -303,31 +311,87 @@ You are writing a custom executive education proposal for a corporate client.
 Your writing is authoritative, specific, and pedagogically grounded.
 Write like a thoughtful senior academic, not like a consultant or AI tool.
 Use concrete language. Avoid buzzwords and vague phrases.
+
+You are given the programme's real phased architecture and its real accepted
+competencies and recommended modules. You narrate and lightly reorganise that
+real data into client-facing language. You do not invent a new schedule, new
+modules, new faculty, or new competencies that are not in the data given to you.
+
+You never write a pricing figure, a currency amount, or any number in the
+investment note. Pricing is handled entirely outside your output.
+
 Always respond with valid JSON only. No markdown, no explanation.
 ${OUTPUT_RULES}`,
-    user: (opportunity) => `Write a complete approach note for this custom programme proposal.
+    user: (opportunity, context = {}) => {
+      const interpreted = opportunity.interpreted || {};
+      const phases = context.architecture_phases || opportunity.architecture?.phases || [];
+      const logistics = context.logistics || opportunity.logistics || {};
+      const competencies = context.accepted_competencies || (opportunity.competencies || []).filter(c => c.decision !== 'rejected');
+      const modules = context.recommended_modules || opportunity.modules || [];
+
+      const hasBudget = !!(logistics.budget && logistics.budget.kind === 'stated' && logistics.budget.amount);
+
+      // Provenance-aware framing: fields the client explicitly stated at high
+      // confidence get written with direct certainty; inferred/assumed fields
+      // get written with appropriately hedged, exploratory language.
+      const provenanceNote = (field, label) => {
+        if (!field || !field.value) return '';
+        const certain = field.source === 'client_stated' && (field.confidence || 0) >= 80;
+        return `${label}: ${Array.isArray(field.value) ? field.value.join(', ') : field.value} ` +
+          `[${certain ? 'client-stated, write with direct certainty' : `${field.source || 'assumed'}, write with appropriately hedged framing`}]`;
+      };
+
+      return `Write a complete approach note for this custom programme proposal.
 
 CLIENT: ${opportunity.client_name}
-GOALS: ${opportunity.interpreted?.goals?.value?.join(', ')}
-AUDIENCE: ${opportunity.interpreted?.audience?.value}
-THEMES: ${opportunity.interpreted?.themes?.value?.join(', ')}
-CONSTRAINTS: ${opportunity.interpreted?.constraints?.value?.join(', ')}
-COMPETENCIES: ${opportunity.competencies?.map(c => c.competency_name).join(', ')}
-MODULES: ${opportunity.modules?.map(m => m.title).join(', ')}
-PROGRAMME: ${opportunity.architecture?.programme_name || 'Custom Programme'}
-TOTAL DAYS: ${opportunity.architecture?.total_days || 3}
+${provenanceNote(interpreted.problem_statement, 'PROBLEM STATEMENT')}
+${provenanceNote(interpreted.goals, 'GOALS')}
+${provenanceNote(interpreted.audience, 'AUDIENCE')}
+${provenanceNote(interpreted.why_needed, 'WHY NEEDED')}
+${provenanceNote(interpreted.themes, 'THEMES')}
+${provenanceNote(interpreted.constraints, 'CONSTRAINTS')}
 
-Write all 7 sections and return EXACTLY this JSON:
+ACCEPTED COMPETENCIES (use only these, do not invent others):
+${competencies.map(c => `- ${c.competency_name}${c.cluster ? ` (${c.cluster})` : ''}`).join('\n') || 'None provided'}
+
+RECOMMENDED MODULES (use only these, do not invent others):
+${modules.map(m => `- ${m.title}${m.faculty ? `, faculty: ${m.faculty}` : ''}${m.duration_hrs ? `, ${m.duration_hrs}h` : ''}`).join('\n') || 'None provided'}
+
+REAL PROGRAMME ARCHITECTURE (the actual phased schedule, already finalised,
+reuse it exactly, do not add, remove, reorder, retime, or rename phases/blocks;
+only rewrite titles and format descriptions into polished client-facing prose):
+${JSON.stringify(phases, null, 2)}
+
+BUDGET STATUS: ${hasBudget ? 'A confirmed client budget exists.' : 'No confirmed budget exists yet.'}
+(This is informational only. Never write a number, amount, or currency symbol
+in investment_note regardless of budget status.)
+
+Return EXACTLY this JSON:
 {
-  "sections": {
-    "context_and_challenge": "3-4 paragraphs about why this client needs this programme now",
-    "programme_philosophy": "2-3 paragraphs on our pedagogical approach",
-    "learning_journey": "narrative walkthrough of the programme day by day",
-    "faculty_bench": "description of faculty and their relevance",
-    "evaluation_approach": "how success will be measured",
-    "analogous_engagements": "2-3 similar past programmes we have delivered",
-    "commercial_terms": "indicative investment and next steps"
-  },
+  "context_and_challenge": "3-4 paragraphs about why this client needs this programme now",
+  "programme_philosophy": "2-3 paragraphs on our pedagogical approach",
+  "theme_module_mapping": [
+    { "theme": "theme name from THEMES", "description": "1-2 sentences", "modules": ["module title, exact match from RECOMMENDED MODULES"] }
+  ],
+  "learning_journey": [
+    {
+      "phase": "phase name, reused from REAL PROGRAMME ARCHITECTURE",
+      "duration": "duration label, reused from REAL PROGRAMME ARCHITECTURE",
+      "blocks": [
+        {
+          "title": "polished client-facing title for this block",
+          "modules": ["module titles, reused exactly from this block's source data"],
+          "faculty": "reused exactly from this block's source data",
+          "format": "polished client-facing format description",
+          "duration_hrs": 1
+        }
+      ]
+    }
+  ],
+  "faculty_bench": "description of faculty and their relevance, names from MODULES only",
+  "evaluation_approach": "how success will be measured",
+  "analogous_engagements": "2-3 similar past programmes we have delivered, do not invent client names",
+  "investment_note": "one short, number-free sentence framing the commercial terms",
   "word_count": 1200
 }
 
@@ -335,8 +399,11 @@ Critical rules:
 - Write in first person plural: we, our, us
 - Every paragraph must be specific to THIS client and THIS brief
 - Do not use generic phrases like world-class or cutting-edge
-- Faculty names must come from the modules list only
-- Do not invent past client names`
+- theme_module_mapping and learning_journey modules must only reference titles from RECOMMENDED MODULES
+- learning_journey must have the same number of phases, in the same order, as REAL PROGRAMME ARCHITECTURE, with duration_hrs unchanged per block
+- investment_note must never contain a digit, a currency symbol, or any figure
+- Do not invent past client names`;
+    }
   },
 
   proposal_scoring: {
