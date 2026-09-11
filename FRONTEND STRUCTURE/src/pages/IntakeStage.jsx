@@ -267,6 +267,7 @@ export default function IntakeStage() {
       });
       
       localStorage.setItem("pis_opportunity_id", result.opportunity_id);
+      localStorage.setItem("pis_client_name", result.client_name || formData.clientName || "Proposal");
 
       const constraints = result.interpreted?.constraints?.value || [];
       const budgetHint  = constraints.find(c => /budget|lakh|crore|₹|cost|investment|commercial/i.test(c));

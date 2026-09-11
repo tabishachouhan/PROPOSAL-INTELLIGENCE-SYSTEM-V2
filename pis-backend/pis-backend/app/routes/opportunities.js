@@ -7,6 +7,7 @@ const { protect, requireRole } = require('../middleware/auth');
 const { buildArchitecture } = require('../services/architectureService');
 const { inferDesignParameters } = require('../services/architectureParams');
 const { writeApproachNote } = require('../services/approachNoteService');
+const { buildApproachNotePpt } = require('../services/pptxService');
 const { scoreProposal } = require('../services/scoringService');
 const { mapCompetencies } = require('../services/competencyService');
 const { recommendModules } = require('../services/moduleService');
@@ -641,5 +642,53 @@ router.post('/:id/score',
     }
   }
 );
+/* ============================================================
+   ADD-ON: PPT export route for the Approach Note
+   ============================================================
+   1) At the top of app/routes/opportunities.js, add this import
+      next to your other service imports:
 
+        const { buildApproachNotePpt } = require('../services/pptxService');
+
+   2) Paste the route below anywhere among your other routes
+      (right after the existing '/:id/approach-note' route is a
+      good spot). It reuses the SAME 'protect' + 'requireRole'
+      middleware you already use everywhere else.
+   ============================================================ */
+
+router.get('/:id/approach-note/ppt',
+  protect,
+  requireRole('admin', 'editor', 'viewer'),
+  async (req, res) => {
+    try {
+      const opportunity = await Opportunity.findById(req.params.id);
+      if (!opportunity) return res.status(404).json({ error: 'Not found' });
+
+      if (!opportunity.approach_note?.sections) {
+        return res.status(400).json({ error: 'Write the approach note first' });
+      }
+
+      console.log(`Generating PPT for ${opportunity.client_name}...`);
+
+      const buffer = await buildApproachNotePpt(opportunity);
+
+      const safeName = (opportunity.client_name || 'proposal')
+        .replace(/[^a-z0-9]/gi, '_')
+        .replace(/_+/g, '_');
+
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${safeName}_Approach_Note.pptx"`
+      );
+      res.send(buffer);
+    } catch (err) {
+      console.error('PPT export error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
 module.exports = router;

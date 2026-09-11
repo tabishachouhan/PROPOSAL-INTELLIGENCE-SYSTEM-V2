@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: (import.meta.env.VITE_API_URL || ' https://proposal-intelligence-system-v2-antr.onrender.com/') + '/api',
+  baseURL: (import.meta.env.VITE_API_URL || 'https://proposal-intelligence-system-v2-antr.onrender.com/') + '/api',
   headers: { 'Content-Type': 'application/json' }
 });
 
@@ -118,5 +118,23 @@ export const saveCompetencyDecision = async (opportunityId, competencyId, decisi
   return res.data;
 };
 export const analyseBrief = createOpportunity;
+
+// Downloads the opportunity's approach note as a .pptx file.
+// Returns nothing — it directly triggers the browser download.
+export const downloadApproachNotePpt = async (id, clientName = 'Proposal') => {
+  const res = await api.get(`/opportunities/${id}/approach-note/ppt`, {
+    responseType: 'blob'
+  });
+
+  const safeName = (clientName || 'Proposal').replace(/[^a-z0-9]/gi, '_');
+  const url = window.URL.createObjectURL(new Blob([res.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `${safeName}_Approach_Note.pptx`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
 
 export default api;
