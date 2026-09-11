@@ -86,7 +86,7 @@ export default function ApproachStage() {
       <div style={{ width: "240px", background: "white", borderRight: "1px solid #e2e8f0" }}>
         <div style={{ padding: "35px 25px" }}>
           <h1 style={{ color: "#2563eb", fontSize: "28px", fontWeight: "800" }}>
-            🚀 Proposal
+             Proposal
             <br />
             Intelligence
           </h1>
