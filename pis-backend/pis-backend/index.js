@@ -50,6 +50,7 @@ app.get('/', (req, res) => {
   });
 });
 
+// Local development
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
 
@@ -59,4 +60,5 @@ if (require.main === module) {
   });
 }
 
+// Vercel serverless/function entry
 module.exports = app;

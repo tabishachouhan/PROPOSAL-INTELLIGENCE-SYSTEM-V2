@@ -36,13 +36,28 @@ const mapCompetencies = async (interpreted, tenantId, opportunityId) => {
     agent: 'competency_mapper'
   });
 
-  // Step 4: Validate output
-  if (!result.mapped_competencies || !Array.isArray(result.mapped_competencies)) {
+  // Step 4: Validate output.
+  // Be tolerant of the two harmless shape variants a small model sometimes
+  // returns despite the prompt's exact-JSON instruction: a bare array
+  // instead of { mapped_competencies: [...] }, or the array under a
+  // differently-cased/pluralised key. Anything else is a genuine failure.
+  let mappedCompetencies = result.mapped_competencies;
+  if (!Array.isArray(mappedCompetencies)) {
+    if (Array.isArray(result)) {
+      mappedCompetencies = result;
+    } else {
+      const arrayValue = Object.values(result || {}).find(v => Array.isArray(v));
+      mappedCompetencies = arrayValue;
+    }
+  }
+
+  if (!Array.isArray(mappedCompetencies)) {
+    console.error('❌ Competency mapper returned an unexpected shape:', JSON.stringify(result));
     throw new Error('Competency mapper returned invalid format');
   }
 
   // Step 5: Enrich with full competency data from this tenant's framework
-  const enriched = result.mapped_competencies.map(mapped => {
+  const enriched = mappedCompetencies.map(mapped => {
     const full = allCompetencies.find(c => c.id === mapped.competency_id);
     return {
       competency_id:   mapped.competency_id,

@@ -553,7 +553,13 @@ router.post('/:id/approach-note',
       if (!opportunity.modules?.length) {
         return res.status(400).json({ error: 'Run module recommendation first' });
       }
-      if (opportunity.approach_note?.sections && req.query.regenerate !== 'true') {
+
+      // An approach note already exists if EITHER shape is populated:
+      // sections (v1, legacy) or context_and_challenge (v2, new structured
+      // shape). Checking only sections would mean a v2 note is treated as
+      // "never written" forever, regenerating on every single page load.
+      const alreadyWritten = opportunity.approach_note?.sections || opportunity.approach_note?.context_and_challenge;
+      if (alreadyWritten && req.query.regenerate !== 'true') {
         return res.json({
           success: true,
           message: 'Approach note already written',
@@ -564,10 +570,24 @@ router.post('/:id/approach-note',
         });
       }
 
-
       console.log(`Agent 6: Writing approach note for ${opportunity.client_name}...`);
 
-      const approachNote = await writeApproachNote(opportunity);
+      // Gather everything the v2 prompt needs that the v1 call never passed:
+      // the real phased architecture, confirmed logistics (for real pricing,
+      // never an invented number), and the accepted competencies/modules
+      // that theme_module_mapping is built from.
+      const context = {
+        architecture_phases: opportunity.architecture?.phases || [],
+        logistics: opportunity.logistics || {},
+        accepted_competencies: (opportunity.competencies || []).filter(c => c.decision !== 'rejected'),
+        recommended_modules: opportunity.modules || []
+      };
+
+      const approachNote = await writeApproachNote(opportunity, context);
+
+      // Tag every newly generated note as v2, so the frontend and the
+      // Score stage both know to read the structured fields, not sections.
+      approachNote.version = 2;
 
       const updated = await Opportunity.findByIdAndUpdate(
         opportunity._id,
@@ -588,7 +608,6 @@ router.post('/:id/approach-note',
     }
   }
 );
-
 router.post('/:id/score',
   protect,
   requireRole('admin', 'editor'),
@@ -597,7 +616,8 @@ router.post('/:id/score',
       const opportunity = await Opportunity.findById(req.params.id);
       if (!opportunity) return res.status(404).json({ error: 'Not found' });
 
-      if (!opportunity.approach_note?.sections) {
+      const hasApproachNote = opportunity.approach_note?.sections || opportunity.approach_note?.context_and_challenge;
+      if (!hasApproachNote) {
         return res.status(400).json({ error: 'Write approach note first' });
       }
       // Return cached result if already scored, unless force regenerate requested
