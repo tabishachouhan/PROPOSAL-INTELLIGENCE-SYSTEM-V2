@@ -684,7 +684,8 @@ router.get('/:id/approach-note/ppt',
       const opportunity = await Opportunity.findById(req.params.id);
       if (!opportunity) return res.status(404).json({ error: 'Not found' });
 
-      if (!opportunity.approach_note?.sections) {
+           const hasApproachNote = opportunity.approach_note?.sections || opportunity.approach_note?.context_and_challenge;
+      if (!hasApproachNote) {
         return res.status(400).json({ error: 'Write the approach note first' });
       }
 
