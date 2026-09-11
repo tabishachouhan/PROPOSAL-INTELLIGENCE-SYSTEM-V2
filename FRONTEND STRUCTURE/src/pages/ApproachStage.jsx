@@ -15,13 +15,13 @@ export default function ApproachStage() {
 
   // Legacy (v1) flat-paragraph labels — kept so old opportunities still render.
   const SECTION_LABELS = {
-    context_and_challenge: "📌 Context & Challenge",
-    programme_philosophy: "🎯 Programme Philosophy",
-    learning_journey: "🗺️ Learning Journey",
-    faculty_bench: "👥 Faculty Bench",
-    evaluation_approach: "📊 Evaluation Approach",
-    analogous_engagements: "🏆 Analogous Engagements",
-    commercial_terms: "💼 Commercial Terms",
+    context_and_challenge: " Context & Challenge",
+    programme_philosophy: " Programme Philosophy",
+    learning_journey: " Learning Journey",
+    faculty_bench: " Faculty Bench",
+    evaluation_approach: " Evaluation Approach",
+    analogous_engagements: " Analogous Engagements",
+    commercial_terms: " Commercial Terms",
   };
 
   useEffect(() => {
@@ -92,12 +92,12 @@ export default function ApproachStage() {
           </h1>
         </div>
         <div style={{ padding: "20px" }}>
-          <div style={menuStyle} onClick={() => navigate("/new")}>📄 New Opportunity</div>
-          <div style={menuStyle} onClick={() => navigate("/questions")}>❓ Questions</div>
-          <div style={menuStyle} onClick={() => navigate("/mapping")}>🧠 Competency Mapping</div>
-          <div style={menuStyle} onClick={() => navigate("/architecture")}>🏗️ Architecture</div>
-          <div style={menuActive}>📝 Approach Note</div>
-          <div style={menuStyle} onClick={() => navigate("/score")}>📈 Proposal Score</div>
+          <div style={menuStyle} onClick={() => navigate("/new")}> New Opportunity</div>
+          <div style={menuStyle} onClick={() => navigate("/questions")}> Questions</div>
+          <div style={menuStyle} onClick={() => navigate("/mapping")}> Competency Mapping</div>
+          <div style={menuStyle} onClick={() => navigate("/architecture")}> Architecture</div>
+          <div style={menuActive}> Approach Note</div>
+          <div style={menuStyle} onClick={() => navigate("/score")}> Proposal Score</div>
           <div style={{ ...menuStyle, marginTop: "40px", color: "#94a3b8" }} onClick={() => navigate("/dashboard")}>
             ← Dashboard
           </div>
@@ -157,7 +157,7 @@ export default function ApproachStage() {
           {/* LOADING */}
           {loading && (
             <div style={{ textAlign: "center", padding: "80px 40px" }}>
-              <div style={{ fontSize: "48px", marginBottom: "20px" }}>✍️</div>
+              <div style={{ fontSize: "48px", marginBottom: "20px" }}></div>
               <p style={{ color: "#0f172a", fontSize: "20px", fontWeight: "700", marginBottom: "10px" }}>
                 {loadingStep}
               </p>
@@ -203,7 +203,7 @@ export default function ApproachStage() {
               {isLegacy ? <LegacySections sections={note.sections} labels={SECTION_LABELS} /> : <StructuredNote note={note} />}
 
               <button onClick={() => navigate("/score")} style={nextBtn}>
-                Next → Score Proposal 📊
+                Next → Score Proposal 
               </button>
             </>
           )}
@@ -240,13 +240,13 @@ export default function ApproachStage() {
 function StructuredNote({ note }) {
   return (
     <>
-      <Prose title="📌 Context & Challenge" text={note.context_and_challenge} />
-      <Prose title="🎯 Programme Philosophy" text={note.programme_philosophy} />
+      <Prose title=" Context & Challenge" text={note.context_and_challenge} />
+      <Prose title=" Programme Philosophy" text={note.programme_philosophy} />
 
       {/* C.1 — Learning Journey rendered with the exact phase-card layout
           from ArchitectureStage.jsx, reading learning_journey instead of
           architecture.phases. Shape is identical by design (Member A). */}
-      <SectionHeading>🗺️ Learning Journey</SectionHeading>
+      <SectionHeading> Learning Journey</SectionHeading>
       {(note.learning_journey || []).map((phase, i) => (
         <div key={i} className="phaseCard">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
@@ -278,7 +278,7 @@ function StructuredNote({ note }) {
 
       {/* C.2 — Theme → Module mapping table, same tabular pattern used for
           Competency Mapping / Module Recommendation results. */}
-      <SectionHeading>🧭 Theme → Module Mapping</SectionHeading>
+      <SectionHeading> Theme → Module Mapping</SectionHeading>
       <TableCard>
         <table className="mappingTable">
           <thead>
@@ -313,17 +313,17 @@ function StructuredNote({ note }) {
         </table>
       </TableCard>
 
-      <Prose title="👥 Faculty Bench" text={note.faculty_bench} />
-      <Prose title="📊 Evaluation Approach" text={note.evaluation_approach} />
-      <Prose title="🏆 Analogous Engagements" text={note.analogous_engagements} />
+      <Prose title=" Faculty Bench" text={note.faculty_bench} />
+      <Prose title=" Evaluation Approach" text={note.evaluation_approach} />
+      <Prose title=" Analogous Engagements" text={note.analogous_engagements} />
 
       {/* C.3 — Investment table with a visible flag whenever pricing is a
           placeholder rather than a real, client-confirmed figure. Reads
           is_confirmed directly rather than guessing from the note text. */}
-      <SectionHeading>💼 Investment</SectionHeading>
+      <SectionHeading> Investment</SectionHeading>
       {!note.investment?.is_confirmed && (
         <div style={pendingBanner}>
-          <span style={{ fontSize: "18px" }}>⚠️</span>
+          <span style={{ fontSize: "18px" }}></span>
           <span>Pricing to be confirmed with commercial team — no confirmed client budget on file yet.</span>
         </div>
       )}
