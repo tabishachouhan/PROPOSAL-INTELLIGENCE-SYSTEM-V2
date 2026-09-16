@@ -44,14 +44,14 @@ export default function ScoreStage() {
       {/* SIDEBAR */}
       <div style={{ width: "240px", background: "white", borderRight: "1px solid #e2e8f0" }}>
         <div style={{ padding: "35px 25px" }}>
-          <h1 style={{ color: "#2563eb", fontSize: "28px", fontWeight: "800" }}>🚀 Proposal<br />Intelligence</h1>
+          <h1 style={{ color: "#2563eb", fontSize: "28px", fontWeight: "800" }}> Proposal<br />Intelligence</h1>
         </div>
         <div style={{ padding: "20px" }}>
-          <div style={menu} onClick={() => navigate("/new")}>📄 New Opportunity</div>
-          <div style={menu} onClick={() => navigate("/questions")}>❓ Questions</div>
-          <div style={menu} onClick={() => navigate("/mapping")}>🧠 Competency Mapping</div>
-          <div style={menu} onClick={() => navigate("/architecture")}>🏗️ Architecture</div>
-          <div style={menu} onClick={() => navigate("/approach")}>📝 Approach Note</div>
+          <div style={menu} onClick={() => navigate("/new")}> New Opportunity</div>
+          <div style={menu} onClick={() => navigate("/questions")}> Questions</div>
+          <div style={menu} onClick={() => navigate("/mapping")}> Competency Mapping</div>
+          <div style={menu} onClick={() => navigate("/architecture")}> Architecture</div>
+          <div style={menu} onClick={() => navigate("/approach")}> Approach Note</div>
           <div style={menuOn}>📈 Proposal Score</div>
           <div style={{ ...menu, marginTop: "40px", color: "#94a3b8" }} onClick={() => navigate("/dashboard")}>← Dashboard</div>
         </div>
@@ -71,7 +71,7 @@ export default function ScoreStage() {
           {/* LOADING */}
           {loading && (
             <div style={{ textAlign: "center", padding: "80px" }}>
-              <div style={{ fontSize: "48px", marginBottom: "16px" }}>📊</div>
+              <div style={{ fontSize: "48px", marginBottom: "16px" }}></div>
               <p style={{ color: "#0f172a", fontSize: "20px", fontWeight: "700" }}>
                 Evaluating proposal strength...
               </p>
@@ -84,7 +84,7 @@ export default function ScoreStage() {
           {/* ERROR */}
           {error && !loading && (
             <div style={{ color: "red", padding: "20px", background: "#fef2f2", borderRadius: "12px", marginBottom: "20px" }}>
-              <p style={{ fontWeight: "700", marginBottom: "10px" }}>⚠️ {error}</p>
+              <p style={{ fontWeight: "700", marginBottom: "10px" }}> {error}</p>
               <p style={{ fontSize: "13px", color: "#64748b", marginBottom: "12px" }}>
                 Make sure the approach note was written first.
               </p>
@@ -201,7 +201,7 @@ export default function ScoreStage() {
                   onClick={loadScore}
                   style={{ padding: "16px", background: "white", color: "#2563eb", border: "2px solid #2563eb", borderRadius: "14px", fontWeight: "700", fontSize: "16px", cursor: "pointer" }}
                 >
-                  🔄 Re-score Proposal
+                   Re-score Proposal
                 </button>
               </div>
 
@@ -210,7 +210,7 @@ export default function ScoreStage() {
                   style={{ width: "100%", marginTop: "12px", padding: "16px", background: "linear-gradient(135deg,#16a34a,#15803d)", color: "white", border: "none", borderRadius: "14px", fontWeight: "700", fontSize: "16px", cursor: "pointer" }}
                   onClick={() => alert("Export feature coming soon! Your proposal score is " + score.total_score + "/100")}
                 >
-                  📄 Export Proposal to PDF
+                   Export Proposal to PDF
                 </button>
               )}
             </>
