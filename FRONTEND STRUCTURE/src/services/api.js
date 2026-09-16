@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const API_URL = (
   import.meta.env.VITE_API_URL ||
-  'https://proposal-intelligence-system-v2-1-eroi.onrender.com'
+  'https://proposal-intelligence-system-v2-2-4hxp.onrender.com'
 ).replace(/\/$/, '');
 
 const api = axios.create({
