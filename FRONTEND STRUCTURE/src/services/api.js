@@ -86,8 +86,8 @@ export const buildArchitecture = async (id, force = false, designParameters = nu
   return res.data;
 };
 
-export const writeApproachNote = async (id) => {
-  const res = await api.post(`/opportunities/${id}/approach-note`);
+export const writeApproachNote = async (id, force = false) => {
+  const res = await api.post(`/opportunities/${id}/approach-note${force ? '?regenerate=true' : ''}`);
   return res.data;
 };
 

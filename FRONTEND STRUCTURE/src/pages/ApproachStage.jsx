@@ -397,11 +397,28 @@ function SectionHeading({ children }) {
 }
 
 function Prose({ title, text }) {
+  // Splits on blank lines so multi-paragraph prompt output actually
+  // renders as separate paragraphs, instead of HTML collapsing every
+  // newline into one unbroken block regardless of what the model wrote.
+  const paragraphs = (text || "—").split(/\n\s*\n/).filter(p => p.trim());
+
   return (
     <div style={{ marginBottom: "28px" }}>
       <SectionHeading>{title}</SectionHeading>
       <div style={{ background: "#f8fafc", borderRadius: "14px", padding: "24px", border: "1px solid #e2e8f0" }}>
-        <p style={{ color: "#334155", lineHeight: "1.8", fontSize: "15px" }}>{text || "—"}</p>
+        {paragraphs.map((para, i) => (
+          <p
+            key={i}
+            style={{
+              color: "#334155",
+              lineHeight: "1.8",
+              fontSize: "15px",
+              marginBottom: i < paragraphs.length - 1 ? "16px" : 0
+            }}
+          >
+            {para.trim()}
+          </p>
+        ))}
       </div>
     </div>
   );
