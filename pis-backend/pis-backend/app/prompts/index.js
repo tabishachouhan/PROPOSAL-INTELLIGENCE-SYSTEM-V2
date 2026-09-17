@@ -459,7 +459,8 @@ Score this proposal on 6 dimensions and return EXACTLY this JSON:
 Rules:
 - can_export is true only if total_score >= 75
 - gaps must be specific and actionable
-- Be honest — do not inflate scores`
+- Be honest — do not inflate scores
+- context_and_challenge, programme_philosophy, faculty_bench, evaluation_approach, and analogous_engagements must each be written as 2-4 distinct paragraphs, separated by a double line break (\\n\\n). Each paragraph should cover one clear idea, roughly 3-5 sentences. Never write a single unbroken block of text for any of these five fields. faculty_bench, evaluation_approach, and analogous_engagements are typically shorter sections, so 2 paragraphs is often enough for them — don't pad them artificially to reach a higher count.`
   }
 
 };
