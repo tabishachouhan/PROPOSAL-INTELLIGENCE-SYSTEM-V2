@@ -1,15 +1,11 @@
 import axios from 'axios';
 
-const API_URL = (
-  import.meta.env.VITE_API_URL ||
-  'https://proposal-intelligence-system-v2-2-4hxp.onrender.com'
-).replace(/\/$/, '');
-
 const api = axios.create({
-  baseURL: `${API_URL}/api`,
+  baseURL: (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api',
   headers: { 'Content-Type': 'application/json' }
 });
 
+// ── Auto-attach token to every request ──────────
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('pis_token');
   if (token) {
@@ -18,6 +14,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// ── AUTH ─────────────────────────────────────────
 export const loginUser = async (email, password) => {
   const res = await api.post('/auth/login', { email, password });
   return res.data;
@@ -28,6 +25,7 @@ export const signupUser = async (data) => {
   return res.data;
 };
 
+// ── OPPORTUNITIES ────────────────────────────────
 export const createOpportunity = async (data) => {
   const res = await api.post('/opportunities', data);
   return res.data;
@@ -43,26 +41,34 @@ export const getOpportunity = async (id) => {
   return res.data;
 };
 
+// ── AI AGENTS ────────────────────────────────────
 export const generateQuestions = async (id) => {
   const res = await api.post(`/opportunities/${id}/questions`);
   return res.data;
 };
 
+// Essentiality bands, suppression decisions + audit trail, and (for Repeat /
+// Same-Cohort modes) the previous_cohort_context block. Backed by
+// GET /opportunities/:id/questions/context — see questionsContextService.js.
 export const getQuestionsContext = async (id) => {
   const res = await api.get(`/opportunities/${id}/questions/context`);
   return res.data;
 };
 
+// ── ANSWER COLUMN (3-option resolver) ────────────
+// mode: 'from_brief' | 'flagged_to_client' | 'draft_assumption'
 export const resolveAnswer = async (opportunityId, questionIndex, mode) => {
   const res = await api.post(`/opportunities/${opportunityId}/questions/${questionIndex}/resolve`, { mode });
   return res.data;
 };
 
+// Manual edit of the answer text box (used after auto-fill too)
 export const updateQuestionAnswer = async (opportunityId, questionIndex, answer_text) => {
   const res = await api.patch(`/opportunities/${opportunityId}/questions/${questionIndex}`, { answer_text });
   return res.data;
 };
 
+// ── FRAMEWORK BUTTON ──────────────────────────────
 export const setQuestionFramework = async (opportunityId, questionIndex, framework_used) => {
   const res = await api.patch(`/opportunities/${opportunityId}/questions/${questionIndex}/framework`, { framework_used });
   return res.data;
@@ -78,16 +84,13 @@ export const recommendModules = async (id) => {
   return res.data;
 };
 
-export const buildArchitecture = async (id, force = false, designParameters = null) => {
-  const res = await api.post(
-    `/opportunities/${id}/architecture${force ? '?regenerate=true' : ''}`,
-    designParameters ? { design_parameters: designParameters } : {}
-  );
+export const buildArchitecture = async (id, force = false) => {
+  const res = await api.post(`/opportunities/${id}/architecture${force ? '?regenerate=true' : ''}`);
   return res.data;
 };
 
-export const writeApproachNote = async (id, force = false) => {
-  const res = await api.post(`/opportunities/${id}/approach-note${force ? '?regenerate=true' : ''}`);
+export const writeApproachNote = async (id) => {
+  const res = await api.post(`/opportunities/${id}/approach-note`);
   return res.data;
 };
 
@@ -123,6 +126,7 @@ export const scoreProposal = async (id, force = false) => {
   return res.data;
 };
 
+// ── COMPETENCY FRAMEWORK ──────────────────────────
 export const getCompetencyFramework = async () => {
   const res = await api.get('/competencies');
   return res.data;
@@ -142,6 +146,7 @@ export const resetCompetencyFramework = async () => {
   return res.data;
 };
 
+// ── COMPETENCY DECISIONS ──────────────────────────
 export const saveCompetencyDecision = async (opportunityId, competencyId, decision) => {
   const res = await api.patch(
     `/opportunities/${opportunityId}/competencies/${competencyId}/decision`,
@@ -149,24 +154,8 @@ export const saveCompetencyDecision = async (opportunityId, competencyId, decisi
   );
   return res.data;
 };
+
+// ── Alias ────────────────────────────────────────
 export const analyseBrief = createOpportunity;
-
-// Downloads the opportunity's approach note as a .pptx file.
-// Returns nothing — it directly triggers the browser download.
-export const downloadApproachNotePpt = async (id, clientName = 'Proposal') => {
-  const res = await api.get(`/opportunities/${id}/approach-note/ppt`, {
-    responseType: 'blob'
-  });
-
-  const safeName = (clientName || 'Proposal').replace(/[^a-z0-9]/gi, '_');
-  const url = window.URL.createObjectURL(new Blob([res.data]));
-  const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', `${safeName}_Approach_Note.pptx`);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.URL.revokeObjectURL(url);
-};
 
 export default api;
