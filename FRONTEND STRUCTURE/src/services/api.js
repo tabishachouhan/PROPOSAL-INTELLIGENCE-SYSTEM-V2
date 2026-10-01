@@ -94,6 +94,33 @@ export const writeApproachNote = async (id) => {
   return res.data;
 };
 
+// ── DOWNLOAD APPROACH NOTE AS POWERPOINT ─────────
+// File name always comes from THIS opportunity's client name (fetched from the
+// server), never from a stale value in localStorage.
+export const downloadApproachNotePpt = async (id, clientName = 'Proposal') => {
+  let name = clientName;
+  try {
+    const opp = await api.get(`/opportunities/${id}`);
+    // server responds { success: true, data: <opportunity> }
+    name = opp.data?.data?.client_name || clientName;
+  } catch (e) {
+    // fall back to the name passed in
+  }
+
+  const res = await api.get(`/opportunities/${id}/approach-note/ppt`, { responseType: 'blob' });
+  const safeName = (name || 'Proposal').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'Proposal';
+  const url = window.URL.createObjectURL(new Blob([res.data], {
+    type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safeName}_Approach_Note.pptx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};
+
 export const scoreProposal = async (id, force = false) => {
   const res = await api.post(`/opportunities/${id}/score${force ? '?regenerate=true' : ''}`);
   return res.data;

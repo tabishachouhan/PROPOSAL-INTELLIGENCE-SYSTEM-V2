@@ -10,6 +10,7 @@ const { scoreProposal } = require('../services/scoringService');
 const { mapCompetencies } = require('../services/competencyService');
 const { recommendModules } = require('../services/moduleService');
 const { resolveFromBrief, draftAssumption } = require('../services/answerResolutionService');
+const { buildApproachNotePpt } = require('../services/pptxService');
 
 // ── POST /api/opportunities ───────────────────────
 router.post('/',
@@ -685,4 +686,33 @@ router.post('/:id/score',
   }
 );
 
+
+// ── GET /api/opportunities/:id/approach-note/ppt ──
+router.get('/:id/approach-note/ppt',
+  protect,
+  requireRole('admin', 'editor'),
+  async (req, res) => {
+    try {
+      const opportunity = await Opportunity.findById(req.params.id);
+      if (!opportunity) return res.status(404).json({ error: 'Not found' });
+
+      const hasNote = opportunity.approach_note?.sections || opportunity.approach_note?.context_and_challenge;
+      if (!hasNote) return res.status(400).json({ error: 'Write the approach note first' });
+
+      console.log(`📊 Generating PPT for ${opportunity.client_name}...`);
+      const buffer = await buildApproachNotePpt(opportunity);
+
+      const safeName = (opportunity.client_name || 'proposal')
+        .replace(/[^a-z0-9]/gi, '_')
+        .replace(/_+/g, '_');
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}_Approach_Note.pptx"`);
+      res.send(buffer);
+    } catch (err) {
+      console.error('PPT export error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
 module.exports = router;

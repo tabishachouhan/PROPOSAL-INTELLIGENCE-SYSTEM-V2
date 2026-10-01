@@ -222,9 +222,9 @@ ${OUTPUT_RULES}`,
     user: (opportunity, designParameters) => `Build a day-by-day programme architecture.
 
 CLIENT: ${opportunity.client_name}
-GOALS: ${opportunity.interpreted?.goals?.value?.join(', ')}
+GOALS: ${[].concat(opportunity.interpreted?.goals?.value || []).join(', ')}
 AUDIENCE: ${opportunity.interpreted?.audience?.value}
-CONSTRAINTS: ${opportunity.interpreted?.constraints?.value?.join(', ')}
+CONSTRAINTS: ${[].concat(opportunity.interpreted?.constraints?.value || []).join(', ')}
 MODULES AVAILABLE:
 ${opportunity.modules?.map((m, i) =>
   `${i + 1}. ${m.title} (${m.duration_hrs}hrs, ${m.format}, Faculty: ${m.faculty})`

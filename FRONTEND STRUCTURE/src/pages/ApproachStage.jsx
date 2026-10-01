@@ -1,23 +1,31 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { writeApproachNote, recommendModules, buildArchitecture } from "../services/api";
-import ProcessingState from "../components/ProcessingState";
+import {
+  writeApproachNote,
+  recommendModules,
+  buildArchitecture,
+  downloadApproachNotePpt,
+} from "../services/api";
+
 export default function ApproachStage() {
   const navigate = useNavigate();
   const [sections, setSections] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState("");
   const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   const opportunityId = localStorage.getItem("pis_opportunity_id");
+  const clientName = localStorage.getItem("pis_client_name") || "Proposal";
 
   const SECTION_LABELS = {
-    context_and_challenge: "📌 Context & Challenge",
-    programme_philosophy:  "🎯 Programme Philosophy",
-    learning_journey:      "🗺️ Learning Journey",
-    faculty_bench:         "👥 Faculty Bench",
-    evaluation_approach:   "📊 Evaluation Approach",
-    analogous_engagements: "🏆 Analogous Engagements",
-    commercial_terms:      "💼 Commercial Terms"
+    context_and_challenge: " Context & Challenge",
+    programme_philosophy:  " Programme Philosophy",
+    learning_journey:      " Learning Journey",
+    faculty_bench:         " Faculty Bench",
+    evaluation_approach:   " Evaluation Approach",
+    analogous_engagements: " Analogous Engagements",
+    commercial_terms:      " Commercial Terms"
   };
 
   useEffect(() => {
@@ -62,21 +70,32 @@ export default function ApproachStage() {
     setLoadingStep("");
   };
 
+  const handleDownloadPpt = async () => {
+    setDownloading(true);
+    setDownloadError("");
+    try {
+      await downloadApproachNotePpt(opportunityId, clientName);
+    } catch (err) {
+      setDownloadError(err?.response?.data?.error || err.message || "Failed to generate PPT");
+    }
+    setDownloading(false);
+  };
+
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#eef2ff", fontFamily: "Inter, sans-serif" }}>
 
       {/* SIDEBAR */}
       <div style={{ width: "240px", background: "white", borderRight: "1px solid #e2e8f0" }}>
         <div style={{ padding: "35px 25px" }}>
-          <h1 style={{ color: "#2563eb", fontSize: "28px", fontWeight: "800" }}>🚀 Proposal<br />Intelligence</h1>
+          <h1 style={{ color: "#2563eb", fontSize: "28px", fontWeight: "800" }}> Proposal<br />Intelligence</h1>
         </div>
         <div style={{ padding: "20px" }}>
-          <div style={menuStyle} onClick={() => navigate("/new")}>📄 New Opportunity</div>
-          <div style={menuStyle} onClick={() => navigate("/questions")}>❓ Questions</div>
-          <div style={menuStyle} onClick={() => navigate("/mapping")}>🧠 Competency Mapping</div>
-          <div style={menuStyle} onClick={() => navigate("/architecture")}>🏗️ Architecture</div>
-          <div style={menuActive}>📝 Approach Note</div>
-          <div style={menuStyle} onClick={() => navigate("/score")}>📈 Proposal Score</div>
+          <div style={menuStyle} onClick={() => navigate("/new")}> New Opportunity</div>
+          <div style={menuStyle} onClick={() => navigate("/questions")}> Questions</div>
+          <div style={menuStyle} onClick={() => navigate("/mapping")}> Competency Mapping</div>
+          <div style={menuStyle} onClick={() => navigate("/architecture")}> Architecture</div>
+          <div style={menuActive}> Approach Note</div>
+          <div style={menuStyle} onClick={() => navigate("/score")}> Proposal Score</div>
           <div style={{ ...menuStyle, marginTop: "40px", color: "#94a3b8" }} onClick={() => navigate("/dashboard")}>← Dashboard</div>
         </div>
       </div>
@@ -85,8 +104,39 @@ export default function ApproachStage() {
       <div style={{ flex: 1, padding: "40px" }}>
         <div style={{ background: "white", borderRadius: "28px", padding: "40px", border: "1px solid #dbe4ff" }}>
 
-          <h1 style={{ fontSize: "42px", color: "#0f172a", fontWeight: "800", marginBottom: "10px" }}>Approach Note</h1>
-          <p style={{ color: "#64748b", marginBottom: "30px" }}>A 7-section professional proposal document</p>
+          {/* HEADER + DOWNLOAD PPT BUTTON */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+            <div>
+              <h1 style={{ fontSize: "42px", color: "#0f172a", fontWeight: "800", marginBottom: "10px" }}>Approach Note</h1>
+              <p style={{ color: "#64748b", marginBottom: "30px" }}>A 7-section professional proposal document</p>
+            </div>
+
+            {sections && !loading && (
+              <button
+                onClick={handleDownloadPpt}
+                disabled={downloading}
+                style={{
+                  padding: "14px 22px",
+                  background: downloading ? "#94a3b8" : "linear-gradient(135deg,#15294F,#C9A227)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "12px",
+                  fontWeight: "700",
+                  fontSize: "15px",
+                  cursor: downloading ? "not-allowed" : "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {downloading ? "⏳ Building PPT..." : "⬇️ Download PPT"}
+              </button>
+            )}
+          </div>
+
+          {downloadError && (
+            <div style={{ color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "10px", padding: "10px 16px", marginBottom: "20px", fontSize: "14px" }}>
+              ⚠️ {downloadError}
+            </div>
+          )}
 
           {/* LOADING */}
           {loading && (
@@ -98,7 +148,6 @@ export default function ApproachStage() {
               <p style={{ color: "#94a3b8", fontSize: "14px" }}>
                 Running full pipeline — this takes 20-30 seconds
               </p>
-              {/* Progress steps */}
               <div style={{ display: "flex", justifyContent: "center", gap: "12px", marginTop: "30px" }}>
                 {["Modules", "Architecture", "Approach Note"].map((step, i) => (
                   <div key={i} style={{
