@@ -1,3 +1,6 @@
+// ── PROMPT REGISTRY ──────────────────────────────
+// : all prompts live here with versions
+// Never write prompt strings inside service files
 const OUTPUT_RULES = `
 Never use em dashes (—) in your response. Use commas, periods, or rewrite the sentence instead.
 Never mention that you are an AI, a language model, or that this content was AI-generated.
@@ -5,6 +8,9 @@ Never add disclaimers, meta-commentary, or notes about how the response was crea
 Write only the requested content directly.`;
 const PROMPTS = {
   
+
+  // ── AGENT 1: Brief Interpreter ─────────────────
+  // ── AGENT 1: Brief Interpreter ─────────────────
   brief_interpretation: {
     version: 'v2',
     model: 'claude-haiku-4-5',
@@ -64,6 +70,7 @@ Rules:
 - ambiguities: what is unclear or missing (this stays a plain array of strings, not wrapped in source/confidence)`
   },
 
+  // ── AGENT 2: Question Generator ────────────────
   question_generation: {
     version: 'v1',
     model: 'claude-sonnet-4-6',
@@ -104,6 +111,10 @@ Return EXACTLY this JSON:
 }`
   },
 
+  // ── AGENT 2b: Answer Resolver (NEW) ────────────
+  // Used by the 3-option answer column on the Questions page.
+  // mode: 'from_brief'       -> Option 1: pull the answer straight out of the brief text
+  // mode: 'draft_assumption' -> Option 3: draft a reasonable first-pass assumption
   answer_resolution: {
     version: 'v1',
     model: 'claude-haiku-4-5',
@@ -139,6 +150,7 @@ If the brief does NOT contain a clear answer to this question, return:
 Be strict — only set found:true if the brief genuinely addresses this question. Do not invent information.`;
       }
 
+      // mode === 'draft_assumption'
       return `The client brief below does NOT clearly answer this discovery question.
 Draft a sensible FIRST-DRAFT ASSUMPTION a Learning Architect could propose to the client,
 based on standard practice for similar executive education programmes and whatever context
@@ -158,14 +170,11 @@ Return EXACTLY this JSON:
     }
   },
 
+  // ── AGENT 3: Competency Mapper ─────────────────
   competency_mapping: {
     version: 'v1',
     model: 'claude-haiku-4-5',
-    // was 600 — with a ~40-row framework and a rationale sentence per each
-    // of the 5 selected competencies, output was tight enough to sometimes
-    // get cut off mid-JSON, which made the response fail to parse (or
-    // jsonrepair "repairing" it into something missing mapped_competencies)
-    max_tokens: 1500,
+    max_tokens: 600,
     temperature: 0,
     system: `You are an expert in executive education competency frameworks.
 Map training needs to competencies accurately.
@@ -199,6 +208,7 @@ Rules:
 - Order by fit_score descending`
   },
 
+  // ── AGENT 5: Architecture Builder ──────────────
   architecture_builder: {
     version: 'v2',
     model: 'claude-haiku-4-5',
@@ -212,9 +222,9 @@ ${OUTPUT_RULES}`,
     user: (opportunity, designParameters) => `Build a day-by-day programme architecture.
 
 CLIENT: ${opportunity.client_name}
-GOALS: ${opportunity.interpreted?.goals?.value?.join(', ')}
-AUDIENCE: ${opportunity.interpreted?.audience?.value} (level: ${designParameters.audience_level || 'Mid'})
-CONSTRAINTS: ${opportunity.interpreted?.constraints?.value?.join(', ')}
+GOALS: ${[].concat(opportunity.interpreted?.goals?.value || []).join(', ')}
+AUDIENCE: ${opportunity.interpreted?.audience?.value}
+CONSTRAINTS: ${[].concat(opportunity.interpreted?.constraints?.value || []).join(', ')}
 MODULES AVAILABLE:
 ${opportunity.modules?.map((m, i) =>
   `${i + 1}. ${m.title} (${m.duration_hrs}hrs, ${m.format}, Faculty: ${m.faculty})`
@@ -226,12 +236,6 @@ DESIGN PARAMETERS (set by the BD Manager, must be respected):
 - Shape template: ${designParameters.template}
 - Reinforcement level: ${designParameters.reinforcement} (light = no follow-up, medium = a few reinforcement touchpoints after the main days, heavy = structured reinforcement cadence over weeks)
 - Measurement depth: ${designParameters.measurement_depth} out of 4 (1 = reaction only, 2 = learning/knowledge check, 3 = behaviour change tracked on the job, 4 = tied to a business KPI)
-- Modality mix target (Layer 2, percent of total contact hours): sync in-person ${designParameters.modality_mix?.sync_in_person ?? 0}%, sync virtual ${designParameters.modality_mix?.sync_virtual ?? 0}%, async self-paced ${designParameters.modality_mix?.async_self_paced ?? 0}%, async social ${designParameters.modality_mix?.async_social ?? 0}%
-- Learning channel mix target (Layer 3, percent of total contact hours): lecture ${designParameters.channel_mix?.lecture ?? 0}%, case ${designParameters.channel_mix?.case ?? 0}%, simulation ${designParameters.channel_mix?.simulation ?? 0}%, action learning ${designParameters.channel_mix?.action_learning ?? 0}%, coaching ${designParameters.channel_mix?.coaching ?? 0}%, peer learning ${designParameters.channel_mix?.peer_learning ?? 0}%, reflection ${designParameters.channel_mix?.reflection ?? 0}%
-
-Every block must carry a "modality" tag (one of: sync_in_person, sync_virtual, async_self_paced, async_social)
-and a "channel" tag (one of: lecture, case, simulation, action_learning, coaching, peer_learning, reflection),
-chosen so that the programme's overall hour-weighted mix across all blocks lands close to the two targets above.
 
 Build a programme architecture and return EXACTLY this JSON:
 {
@@ -250,8 +254,6 @@ Build a programme architecture and return EXACTLY this JSON:
           "modules": ["module title"],
           "faculty": "faculty name",
           "format": "Online reading",
-          "modality": "async_self_paced",
-          "channel": "reflection",
           "duration_hrs": 1
         }
       ]
@@ -267,8 +269,6 @@ Build a programme architecture and return EXACTLY this JSON:
           "modules": [],
           "faculty": "",
           "format": "Plenary",
-          "modality": "sync_in_person",
-          "channel": "lecture",
           "duration_hrs": 1
         }
       ]
@@ -280,9 +280,7 @@ Build a programme architecture and return EXACTLY this JSON:
   },
   "rationale": {
     "shape_reason": "one or two sentences on why this duration/format/template fits this brief",
-    "modality_reason": "one or two sentences on why this modality split (sync/virtual/async) fits the format, budget, and audience",
-    "sequencing_reason": "one or two sentences on why the modules are ordered this way across the phases",
-    "faculty_reason": "one or two sentences on why the named faculty were assigned to their sessions"
+    "sequencing_reason": "one or two sentences on why the modules are ordered this way across the phases"
   }
 }
 
@@ -290,23 +288,16 @@ Rules:
 - Total duration must match the design parameters above (${designParameters.total_duration_days} day(s))
 - Format must match the design parameters above (${designParameters.format})
 - Pre-work: 1-2 online modules
-- Each day: respect the per-day contact hour ceiling implied by the audience level above (Mid 7h, Senior 6h, Top 5h)
+- Each day: 6-8 hours max
 - Last day must include capstone or action planning if reinforcement is medium or heavy
 - Use only modules from the list provided
 - warnings: flag any overloaded days or missing competencies
-- rationale fields are all required and must reference the actual brief, not generic text`
+- rationale fields are required and must reference the actual brief, not generic text`
   },
 
-  // ── APPROACH NOTE v2 ──────────────────────────────
-  // Structured schema (see PIS Stage 6 Approach Note Work Division v2):
-  // - theme_module_mapping + learning_journey are structured, not paragraphs
-  // - learning_journey narrates architecture.phases, it never invents a new schedule
-  // - the LLM NEVER writes a pricing figure. It only writes a short, number-free
-  //   "investment_note". The real investment table is assembled by
-  //   approachNoteService from real data (logistics.budget / rate card), never
-  //   from the model's own guess. See buildInvestment() in approachNoteService.js.
+  // ── AGENT 6: Approach Note Writer ──────────────
   approach_note: {
-    version: 'v2',
+    version: 'v1',
     model: 'claude-sonnet-4-6',
     max_tokens: 8000,
     temperature: 0.7,
@@ -315,87 +306,31 @@ You are writing a custom executive education proposal for a corporate client.
 Your writing is authoritative, specific, and pedagogically grounded.
 Write like a thoughtful senior academic, not like a consultant or AI tool.
 Use concrete language. Avoid buzzwords and vague phrases.
-
-You are given the programme's real phased architecture and its real accepted
-competencies and recommended modules. You narrate and lightly reorganise that
-real data into client-facing language. You do not invent a new schedule, new
-modules, new faculty, or new competencies that are not in the data given to you.
-
-You never write a pricing figure, a currency amount, or any number in the
-investment note. Pricing is handled entirely outside your output.
-
 Always respond with valid JSON only. No markdown, no explanation.
 ${OUTPUT_RULES}`,
-    user: (opportunity, context = {}) => {
-      const interpreted = opportunity.interpreted || {};
-      const phases = context.architecture_phases || opportunity.architecture?.phases || [];
-      const logistics = context.logistics || opportunity.logistics || {};
-      const competencies = context.accepted_competencies || (opportunity.competencies || []).filter(c => c.decision !== 'rejected');
-      const modules = context.recommended_modules || opportunity.modules || [];
-
-      const hasBudget = !!(logistics.budget && logistics.budget.kind === 'stated' && logistics.budget.amount);
-
-      // Provenance-aware framing: fields the client explicitly stated at high
-      // confidence get written with direct certainty; inferred/assumed fields
-      // get written with appropriately hedged, exploratory language.
-      const provenanceNote = (field, label) => {
-        if (!field || !field.value) return '';
-        const certain = field.source === 'client_stated' && (field.confidence || 0) >= 80;
-        return `${label}: ${Array.isArray(field.value) ? field.value.join(', ') : field.value} ` +
-          `[${certain ? 'client-stated, write with direct certainty' : `${field.source || 'assumed'}, write with appropriately hedged framing`}]`;
-      };
-
-      return `Write a complete approach note for this custom programme proposal.
+    user: (opportunity) => `Write a complete approach note for this custom programme proposal.
 
 CLIENT: ${opportunity.client_name}
-${provenanceNote(interpreted.problem_statement, 'PROBLEM STATEMENT')}
-${provenanceNote(interpreted.goals, 'GOALS')}
-${provenanceNote(interpreted.audience, 'AUDIENCE')}
-${provenanceNote(interpreted.why_needed, 'WHY NEEDED')}
-${provenanceNote(interpreted.themes, 'THEMES')}
-${provenanceNote(interpreted.constraints, 'CONSTRAINTS')}
+GOALS: ${opportunity.interpreted?.goals?.value?.join(', ')}
+AUDIENCE: ${opportunity.interpreted?.audience?.value}
+THEMES: ${opportunity.interpreted?.themes?.value?.join(', ')}
+CONSTRAINTS: ${opportunity.interpreted?.constraints?.value?.join(', ')}
+COMPETENCIES: ${opportunity.competencies?.map(c => c.competency_name).join(', ')}
+MODULES: ${opportunity.modules?.map(m => m.title).join(', ')}
+PROGRAMME: ${opportunity.architecture?.programme_name || 'Custom Programme'}
+TOTAL DAYS: ${opportunity.architecture?.total_days || 3}
 
-ACCEPTED COMPETENCIES (use only these, do not invent others):
-${competencies.map(c => `- ${c.competency_name}${c.cluster ? ` (${c.cluster})` : ''}`).join('\n') || 'None provided'}
-
-RECOMMENDED MODULES (use only these, do not invent others):
-${modules.map(m => `- ${m.title}${m.faculty ? `, faculty: ${m.faculty}` : ''}${m.duration_hrs ? `, ${m.duration_hrs}h` : ''}`).join('\n') || 'None provided'}
-
-REAL PROGRAMME ARCHITECTURE (the actual phased schedule, already finalised,
-reuse it exactly, do not add, remove, reorder, retime, or rename phases/blocks;
-only rewrite titles and format descriptions into polished client-facing prose):
-${JSON.stringify(phases, null, 2)}
-
-BUDGET STATUS: ${hasBudget ? 'A confirmed client budget exists.' : 'No confirmed budget exists yet.'}
-(This is informational only. Never write a number, amount, or currency symbol
-in investment_note regardless of budget status.)
-
-Return EXACTLY this JSON:
+Write all 7 sections and return EXACTLY this JSON:
 {
-  "context_and_challenge": "3-4 paragraphs about why this client needs this programme now",
-  "programme_philosophy": "2-3 paragraphs on our pedagogical approach",
-  "theme_module_mapping": [
-    { "theme": "theme name from THEMES", "description": "1-2 sentences", "modules": ["module title, exact match from RECOMMENDED MODULES"] }
-  ],
-  "learning_journey": [
-    {
-      "phase": "phase name, reused from REAL PROGRAMME ARCHITECTURE",
-      "duration": "duration label, reused from REAL PROGRAMME ARCHITECTURE",
-      "blocks": [
-        {
-          "title": "polished client-facing title for this block",
-          "modules": ["module titles, reused exactly from this block's source data"],
-          "faculty": "reused exactly from this block's source data",
-          "format": "polished client-facing format description",
-          "duration_hrs": 1
-        }
-      ]
-    }
-  ],
-  "faculty_bench": "description of faculty and their relevance, names from MODULES only",
-  "evaluation_approach": "how success will be measured",
-  "analogous_engagements": "2-3 similar past programmes we have delivered, do not invent client names",
-  "investment_note": "one short, number-free sentence framing the commercial terms",
+  "sections": {
+    "context_and_challenge": "3-4 paragraphs about why this client needs this programme now",
+    "programme_philosophy": "2-3 paragraphs on our pedagogical approach",
+    "learning_journey": "narrative walkthrough of the programme day by day",
+    "faculty_bench": "description of faculty and their relevance",
+    "evaluation_approach": "how success will be measured",
+    "analogous_engagements": "2-3 similar past programmes we have delivered",
+    "commercial_terms": "indicative investment and next steps"
+  },
   "word_count": 1200
 }
 
@@ -403,13 +338,11 @@ Critical rules:
 - Write in first person plural: we, our, us
 - Every paragraph must be specific to THIS client and THIS brief
 - Do not use generic phrases like world-class or cutting-edge
-- theme_module_mapping and learning_journey modules must only reference titles from RECOMMENDED MODULES
-- learning_journey must have the same number of phases, in the same order, as REAL PROGRAMME ARCHITECTURE, with duration_hrs unchanged per block
-- investment_note must never contain a digit, a currency symbol, or any figure
-- Do not invent past client names`;
-    }
+- Faculty names must come from the modules list only
+- Do not invent past client names`
   },
 
+  // ── PROPOSAL SCORER ────────────────────────────
   proposal_scoring: {
     version: 'v1',
     model: 'claude-haiku-4-5',
@@ -425,17 +358,11 @@ CLIENT: ${opportunity.client_name}
 GOALS: ${opportunity.interpreted?.goals?.value?.join(', ')}
 COMPETENCIES MAPPED: ${opportunity.competencies?.length || 0}
 MODULES SELECTED: ${opportunity.modules?.length || 0}
-APPROACH NOTE SECTIONS: ${
-  opportunity.approach_note?.version === 2
-    ? ['context_and_challenge', 'programme_philosophy', 'theme_module_mapping', 'learning_journey', 'faculty_bench', 'evaluation_approach', 'analogous_engagements', 'investment']
-        .filter(k => opportunity.approach_note?.[k] && (Array.isArray(opportunity.approach_note[k]) ? opportunity.approach_note[k].length : true))
-        .join(', ')
-    : Object.keys(opportunity.approach_note?.sections || {}).join(', ')
-}
+APPROACH NOTE SECTIONS: ${Object.keys(opportunity.approach_note?.sections || {}).join(', ')}
 
 APPROACH NOTE PREVIEW:
-Context: ${(opportunity.approach_note?.context_and_challenge || opportunity.approach_note?.sections?.context_and_challenge)?.substring(0, 200) || 'Not written'}
-Philosophy: ${(opportunity.approach_note?.programme_philosophy || opportunity.approach_note?.sections?.programme_philosophy)?.substring(0, 200) || 'Not written'}
+Context: ${opportunity.approach_note?.sections?.context_and_challenge?.substring(0, 200) || 'Not written'}
+Philosophy: ${opportunity.approach_note?.sections?.programme_philosophy?.substring(0, 200) || 'Not written'}
 
 Score this proposal on 6 dimensions and return EXACTLY this JSON:
 {
@@ -459,8 +386,7 @@ Score this proposal on 6 dimensions and return EXACTLY this JSON:
 Rules:
 - can_export is true only if total_score >= 75
 - gaps must be specific and actionable
-- Be honest — do not inflate scores
-- context_and_challenge, programme_philosophy, faculty_bench, evaluation_approach, and analogous_engagements must each be written as 2-4 distinct paragraphs, separated by a double line break (\\n\\n). Each paragraph should cover one clear idea, roughly 3-5 sentences. Never write a single unbroken block of text for any of these five fields. faculty_bench, evaluation_approach, and analogous_engagements are typically shorter sections, so 2 paragraphs is often enough for them — don't pad them artificially to reach a higher count.`
+- Be honest — do not inflate scores`
   }
 
 };

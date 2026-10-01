@@ -5,14 +5,14 @@ const { interpretBrief } = require('../services/interpretationService');
 const { generateQuestions } = require('../services/questionService');
 const { protect, requireRole } = require('../middleware/auth');
 const { buildArchitecture } = require('../services/architectureService');
-const { inferDesignParameters } = require('../services/architectureParams');
 const { writeApproachNote } = require('../services/approachNoteService');
-const { buildApproachNotePpt } = require('../services/pptxService');
 const { scoreProposal } = require('../services/scoringService');
 const { mapCompetencies } = require('../services/competencyService');
 const { recommendModules } = require('../services/moduleService');
 const { resolveFromBrief, draftAssumption } = require('../services/answerResolutionService');
+const { buildApproachNotePpt } = require('../services/pptxService');
 
+// ── POST /api/opportunities ───────────────────────
 router.post('/',
   protect,
   requireRole('admin', 'editor'),
@@ -23,6 +23,9 @@ router.post('/',
       return res.status(400).json({ error: 'client_name and brief_text are required' });
     }
 
+    // Repeat and Same-Cohort modes require a linked previous opportunity —
+    // enforced here so Discovery Questions can never run those modes
+    // against nothing (matches the spec's Section 10.4 blocking-screen rule).
     if ((programme_mode === 'repeat' || programme_mode === 'new_content_same_cohort') && !previous_opportunity_id) {
       return res.status(400).json({
         error: 'Repeat and Same-Cohort programmes must be linked to a previous opportunity',
@@ -31,6 +34,10 @@ router.post('/',
     }
 
     try {
+      // ── Reuse check: same tenant + same client_name + same brief_text ──
+      // If this exact brief has already been analysed, return the EXISTING
+      // opportunity (with its existing interpretation, questions, answers, etc.)
+      // instead of creating a duplicate and re-running the AI agents.
       const existing = await Opportunity.findOne({
         tenant_id: req.user.id,
         client_name,
@@ -62,8 +69,8 @@ router.post('/',
         status: 'interpreting'
       });
 
-      console.log(` New opportunity: ${client_name} by ${req.user.email}`);
-      console.log('Agent 1: Interpreting brief...');
+      console.log(`📋 New opportunity: ${client_name} by ${req.user.email}`);
+      console.log('🤖 Agent 1: Interpreting brief...');
 
       const interpreted = await interpretBrief(brief_text, req.user.id, opportunity._id);
 
@@ -89,6 +96,7 @@ router.post('/',
   }
 );
 
+// ── POST /api/opportunities/:id/questions ─────────
 router.post('/:id/questions',
   protect,
   requireRole('admin', 'editor'),
@@ -105,6 +113,7 @@ router.post('/:id/questions',
         });
       }
 
+      // ✅ GUARD: already has questions, don't re-run
       if (opportunity.questions && opportunity.questions.length > 0) {
         const groupedExisting = opportunity.questions.reduce((acc, q) => {
           if (!acc[q.theme_code]) acc[q.theme_code] = [];
@@ -122,7 +131,7 @@ router.post('/:id/questions',
         });
       }
 
-      console.log(` Agent 2: Generating questions for ${opportunity.client_name}...`);
+      console.log(`🤖 Agent 2: Generating questions for ${opportunity.client_name}...`);
 
       const questions = await generateQuestions(opportunity.interpreted, req.user.id, opportunity._id);
 
@@ -153,6 +162,8 @@ router.post('/:id/questions',
     }
   }
 );
+
+// ── GET /api/opportunities ────────────────────────
 router.get('/',
   protect,
   async (req, res) => {
@@ -170,6 +181,7 @@ router.get('/',
   }
 );
 
+// ── GET /api/opportunities/:id ────────────────────
 router.get('/:id',
   protect,
   async (req, res) => {
@@ -183,6 +195,7 @@ router.get('/:id',
   }
 );
 
+// ── PATCH /api/opportunities/:id/questions/:questionIndex ──
 router.patch('/:id/questions/:questionIndex',
   protect,
   requireRole('admin', 'editor'),
@@ -215,6 +228,7 @@ router.patch('/:id/questions/:questionIndex',
 
 const { buildQuestionsContext } = require('../services/questionsContextService');
 
+// ── GET /api/opportunities/:id/questions/context ──
 const SuppressionAudit = require('../models/SuppressionAudit');
 
 router.get('/:id/questions/context',
@@ -223,6 +237,10 @@ router.get('/:id/questions/context',
     try {
       const context = await buildQuestionsContext(req.params.id);
 
+      // Persist audit rows on every context call — cheap, and matches the
+      // spec's "written on every generate call" requirement (Section 12.3),
+      // interpreted here to also cover context loads since that's when
+      // suppression decisions are actually computed.
       if (context.suppression?.audit?.length) {
         await SuppressionAudit.insertMany(
           context.suppression.audit.map(row => ({
@@ -239,6 +257,9 @@ router.get('/:id/questions/context',
     }
   }
 );
+// ── POST /api/opportunities/:id/questions/:questionIndex/resolve ──
+// Powers the 3-option answer column.
+// body: { mode: 'from_brief' | 'flagged_to_client' | 'draft_assumption' }
 router.post('/:id/questions/:questionIndex/resolve',
   protect,
   requireRole('admin', 'editor'),
@@ -268,7 +289,7 @@ router.post('/:id/questions/:questionIndex/resolve',
       }
 
       if (mode === 'from_brief') {
-        console.log(`Resolving answer from brief for Q${index}...`);
+        console.log(`🤖 Resolving answer from brief for Q${index}...`);
         const result = await resolveFromBrief(
           question.question_text,
           opportunity.brief_text,
@@ -294,7 +315,7 @@ router.post('/:id/questions/:questionIndex/resolve',
       }
 
       if (mode === 'draft_assumption') {
-        console.log(`Drafting assumption for Q${index}...`);
+        console.log(`🤖 Drafting assumption for Q${index}...`);
         const result = await draftAssumption(
           question.question_text,
           opportunity.brief_text,
@@ -317,6 +338,7 @@ router.post('/:id/questions/:questionIndex/resolve',
   }
 );
 
+// ── PATCH /api/opportunities/:id/questions/:questionIndex/framework ──
 router.patch('/:id/questions/:questionIndex/framework',
   protect,
   requireRole('admin', 'editor'),
@@ -340,6 +362,7 @@ router.patch('/:id/questions/:questionIndex/framework',
   }
 );
 
+// ── POST /api/opportunities/:id/competencies ──────
 router.post('/:id/competencies',
   protect,
   requireRole('admin', 'editor'),
@@ -352,6 +375,10 @@ router.post('/:id/competencies',
       if (!opportunity.interpreted?.goals) {
         return res.status(400).json({ error: 'Run brief interpretation first' });
       }
+
+      // Return cached result unless a fresh remap was explicitly requested
+      // (e.g. the user just uploaded a new competency framework, in which
+      // case the old cached mapping is no longer meaningful).
       if (opportunity.competencies && opportunity.competencies.length > 0 && req.query.remap !== 'true') {
         return res.json({
           success: true,
@@ -364,7 +391,7 @@ router.post('/:id/competencies',
         });
       }
 
-      console.log(` Agent 3: Mapping competencies for ${opportunity.client_name}...`);
+      console.log(`🤖 Agent 3: Mapping competencies for ${opportunity.client_name}...`);
 
       const competencies = await mapCompetencies(opportunity.interpreted, req.user.id, opportunity._id);
 
@@ -390,6 +417,9 @@ router.post('/:id/competencies',
   }
 );
 
+// ── PATCH /api/opportunities/:id/competencies/:competencyId/decision ──
+// Saves whether the BD Manager accepted or rejected a mapped competency.
+// Rejected competencies are excluded from module recommendation.
 router.patch('/:id/competencies/:competencyId/decision',
   protect,
   requireRole('admin', 'editor'),
@@ -419,6 +449,7 @@ router.patch('/:id/competencies/:competencyId/decision',
   }
 );
 
+// ── POST /api/opportunities/:id/modules ───────────
 router.post('/:id/modules',
   protect,
   requireRole('admin', 'editor'),
@@ -444,7 +475,7 @@ router.post('/:id/modules',
         });
       }
 
-      console.log(`Agent 4: Recommending modules for ${opportunity.client_name}...`);
+      console.log(`🤖 Agent 4: Recommending modules for ${opportunity.client_name}...`);
 
       const modules = await recommendModules(opportunity.competencies, req.user.id, opportunity._id);
 
@@ -470,6 +501,7 @@ router.post('/:id/modules',
   }
 );
 
+// ── POST /api/opportunities/:id/architecture ──────
 router.post('/:id/architecture',
   protect,
   requireRole('admin', 'editor'),
@@ -478,13 +510,18 @@ router.post('/:id/architecture',
       const opportunity = await Opportunity.findById(req.params.id);
       if (!opportunity) return res.status(404).json({ error: 'Not found' });
 
+      // Instead of blocking the BD Manager with an error, silently run
+      // module recommendation first if it hasn't happened yet — same
+      // fallback pattern already used by the Approach Note stage.
       if (!opportunity.modules?.length) {
-        console.log(`Agent 4: No modules yet for ${opportunity.client_name} — running module recommendation first...`);
+        console.log(`🤖 Agent 4: No modules yet for ${opportunity.client_name} — running module recommendation first...`);
         const modules = await recommendModules(opportunity.competencies, req.user.id, opportunity._id);
         await Opportunity.findByIdAndUpdate(opportunity._id, { $set: { modules } });
         opportunity.modules = modules;
       }
 
+      // Architecture needs a real competency set behind it, same principle
+      // as the modules check above — don't silently build against nothing.
       const acceptedCompetencies = (opportunity.competencies || [])
         .filter((c) => c.decision !== 'rejected');
       if (!acceptedCompetencies.length) {
@@ -494,13 +531,16 @@ router.post('/:id/architecture',
         });
       }
 
+      // Optional partial design-parameter overrides from the BD Manager,
+      // e.g. { "reinforcement": "heavy" }. Anything not sent falls back
+      // to the inferred defaults inside buildArchitecture().
       const designParametersOverride = req.body?.design_parameters || {};
       if (designParametersOverride.total_duration_days !== undefined && designParametersOverride.total_duration_days <= 0) {
         delete designParametersOverride.total_duration_days;
       }
+      // Return cached result if already built, unless force regenerate requested
+      // or the BD Manager is explicitly changing a design parameter.
       const hasOverride = Object.keys(designParametersOverride).length > 0;
-      const suggestedDefaults = inferDesignParameters(opportunity);
-
       if (opportunity.architecture?.phases?.length > 0 && req.query.regenerate !== 'true' && !hasOverride) {
         return res.json({
           success: true,
@@ -508,13 +548,14 @@ router.post('/:id/architecture',
           opportunity_id: opportunity._id,
           client_name: opportunity.client_name,
           architecture: opportunity.architecture,
-          suggested_defaults: suggestedDefaults,
           next_step: `POST /api/opportunities/${opportunity._id}/approach-note`
         });
       }
 
-      console.log(`Agent 5: Building architecture for ${opportunity.client_name}...`);
+      console.log(`🤖 Agent 5: Building architecture for ${opportunity.client_name}...`);
 
+      // Carry forward previously saved design parameters (if any) so a
+      // single-field override doesn't reset everything else back to defaults.
       const previousParameters = opportunity.architecture?.design_parameters || {};
       const architecture = await buildArchitecture(opportunity, {
         ...previousParameters,
@@ -532,7 +573,6 @@ router.post('/:id/architecture',
         opportunity_id: updated._id,
         client_name: updated.client_name,
         architecture,
-        suggested_defaults: suggestedDefaults,
         next_step: `POST /api/opportunities/${updated._id}/approach-note`
       });
     } catch (err) {
@@ -542,6 +582,7 @@ router.post('/:id/architecture',
   }
 );
 
+// ── POST /api/opportunities/:id/approach-note ─────
 router.post('/:id/approach-note',
   protect,
   requireRole('admin', 'editor'),
@@ -553,13 +594,8 @@ router.post('/:id/approach-note',
       if (!opportunity.modules?.length) {
         return res.status(400).json({ error: 'Run module recommendation first' });
       }
-
-      // An approach note already exists if EITHER shape is populated:
-      // sections (v1, legacy) or context_and_challenge (v2, new structured
-      // shape). Checking only sections would mean a v2 note is treated as
-      // "never written" forever, regenerating on every single page load.
-      const alreadyWritten = opportunity.approach_note?.sections || opportunity.approach_note?.context_and_challenge;
-      if (alreadyWritten && req.query.regenerate !== 'true') {
+      // Return cached result if already written, unless force regenerate requested
+      if (opportunity.approach_note?.sections && req.query.regenerate !== 'true') {
         return res.json({
           success: true,
           message: 'Approach note already written',
@@ -570,24 +606,10 @@ router.post('/:id/approach-note',
         });
       }
 
-      console.log(`Agent 6: Writing approach note for ${opportunity.client_name}...`);
 
-      // Gather everything the v2 prompt needs that the v1 call never passed:
-      // the real phased architecture, confirmed logistics (for real pricing,
-      // never an invented number), and the accepted competencies/modules
-      // that theme_module_mapping is built from.
-      const context = {
-        architecture_phases: opportunity.architecture?.phases || [],
-        logistics: opportunity.logistics || {},
-        accepted_competencies: (opportunity.competencies || []).filter(c => c.decision !== 'rejected'),
-        recommended_modules: opportunity.modules || []
-      };
+      console.log(`🤖 Agent 6: Writing approach note for ${opportunity.client_name}...`);
 
-      const approachNote = await writeApproachNote(opportunity, context);
-
-      // Tag every newly generated note as v2, so the frontend and the
-      // Score stage both know to read the structured fields, not sections.
-      approachNote.version = 2;
+      const approachNote = await writeApproachNote(opportunity);
 
       const updated = await Opportunity.findByIdAndUpdate(
         opportunity._id,
@@ -608,6 +630,8 @@ router.post('/:id/approach-note',
     }
   }
 );
+
+// ── POST /api/opportunities/:id/score ─────────────
 router.post('/:id/score',
   protect,
   requireRole('admin', 'editor'),
@@ -616,8 +640,7 @@ router.post('/:id/score',
       const opportunity = await Opportunity.findById(req.params.id);
       if (!opportunity) return res.status(404).json({ error: 'Not found' });
 
-      const hasApproachNote = opportunity.approach_note?.sections || opportunity.approach_note?.context_and_challenge;
-      if (!hasApproachNote) {
+      if (!opportunity.approach_note?.sections) {
         return res.status(400).json({ error: 'Write approach note first' });
       }
       // Return cached result if already scored, unless force regenerate requested
@@ -635,7 +658,7 @@ router.post('/:id/score',
         });
       }
 
-      console.log(`Scoring proposal for ${opportunity.client_name}...`);
+      console.log(`🤖 Scoring proposal for ${opportunity.client_name}...`);
 
       const score = await scoreProposal(opportunity);
       const status = score.can_export ? 'ready_to_export' : 'needs_improvement';
@@ -662,49 +685,29 @@ router.post('/:id/score',
     }
   }
 );
-/* ============================================================
-   ADD-ON: PPT export route for the Approach Note
-   ============================================================
-   1) At the top of app/routes/opportunities.js, add this import
-      next to your other service imports:
 
-        const { buildApproachNotePpt } = require('../services/pptxService');
 
-   2) Paste the route below anywhere among your other routes
-      (right after the existing '/:id/approach-note' route is a
-      good spot). It reuses the SAME 'protect' + 'requireRole'
-      middleware you already use everywhere else.
-   ============================================================ */
-
+// ── GET /api/opportunities/:id/approach-note/ppt ──
 router.get('/:id/approach-note/ppt',
   protect,
-  requireRole('admin', 'editor', 'viewer'),
+  requireRole('admin', 'editor'),
   async (req, res) => {
     try {
       const opportunity = await Opportunity.findById(req.params.id);
       if (!opportunity) return res.status(404).json({ error: 'Not found' });
 
-           const hasApproachNote = opportunity.approach_note?.sections || opportunity.approach_note?.context_and_challenge;
-      if (!hasApproachNote) {
-        return res.status(400).json({ error: 'Write the approach note first' });
-      }
+      const hasNote = opportunity.approach_note?.sections || opportunity.approach_note?.context_and_challenge;
+      if (!hasNote) return res.status(400).json({ error: 'Write the approach note first' });
 
-      console.log(`Generating PPT for ${opportunity.client_name}...`);
-
+      console.log(`📊 Generating PPT for ${opportunity.client_name}...`);
       const buffer = await buildApproachNotePpt(opportunity);
 
       const safeName = (opportunity.client_name || 'proposal')
         .replace(/[^a-z0-9]/gi, '_')
         .replace(/_+/g, '_');
 
-      res.setHeader(
-        'Content-Type',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-      );
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${safeName}_Approach_Note.pptx"`
-      );
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}_Approach_Note.pptx"`);
       res.send(buffer);
     } catch (err) {
       console.error('PPT export error:', err.message);
